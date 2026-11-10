@@ -1,0 +1,350 @@
+# Solution Design: Multi-Cloud DotNet Container
+
+Status: phase 1 (runs locally and in a local container) is ready to build. Written 2026-11-10. Nothing in this
+document has been built or run yet.
+
+## 1. Purpose
+
+One small ASP.NET Core MVC application, built into one container image, that is later deployed unchanged to Google
+Cloud Run, Google Kubernetes Engine and AWS ECS. It is a placeholder application: it does nothing useful on its own,
+and exists so that a person can check that a platform is wired correctly.
+
+It answers five questions about any environment it is deployed to:
+
+1. Is the application up, and can the platform's health probes reach it?
+2. Are the application's log lines arriving in the log system (for example Splunk), and from which run of which
+   instance?
+3. Do errors raised by the application reach the log system, and can a caller tell an application error from one
+   returned by a firewall or proxy in front of it?
+4. Does the network path allow every HTTP verb through?
+5. Where does the application think it is running?
+
+The rule that shapes the design: **the code and the image are identical everywhere. Everything that differs between
+environments is an environment variable or a platform setting.** A change to `Program.cs` to suit one cloud is a
+defect in the design, and is raised before it is made.
+
+## 2. Phases
+
+| Phase | Deliverable | State |
+|---|---|---|
+| 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
+| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | Later; not designed here |
+| 3 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
+| 4 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Later; not designed here |
+
+Each later phase adds an install file and whatever platform settings it needs. Each install file is written as
+plain command-line steps a person can follow by hand, and ends with a section recording what was different on that
+platform. Infrastructure-as-code and a build pipeline come after the manual steps work, if at all.
+
+**Out of scope for phase 1:** any cloud resource, Terraform, a GitHub Actions pipeline, a log sink other than the
+console, the OpenTelemetry SDK, sign-in, cookies, and any storage that outlives the process.
+
+## 3. Solution layout
+
+```
+Dockerfile                                 the one image definition
+.dockerignore
+docs/
+  SDD.md                                   this document
+  INSTALL-local.md                         phase 1: run it with dotnet, run it with Docker
+src/
+  Multi-Cloud Container Solution.slnx      the one solution file
+  Directory.Build.props                    house build settings (already in the repository)
+  .editorconfig                            house C# style (already in the repository)
+  MultiCloud.Application.Web/              the MVC host: composition root, controllers, one view, logging setup
+  MultiCloud.Adapter.Platform/             detects the hosting platform and describes it
+  MultiCloud.Adapter.Notes/                the in-memory Notes database and its create, read, update, delete
+  MultiCloud.Orchestrator.Heartbeat/       the background heartbeat
+  MultiCloud.Test.Unit/                    MSTest unit tests
+```
+
+The root namespace is `MultiCloud`. Project kinds, naming, dependency directions and what each class library may
+make public follow the `dotnet-solution-architecture` skill; the adoption state is `conforming` from the first
+commit.
+
+| Project | Kind | Why it is its own project | May reference |
+|---|---|---|---|
+| `MultiCloud.Application.Web` | Application | The host. Loads configuration, builds each options object, calls each registration, holds controllers and the view. No application logic. | The three below |
+| `MultiCloud.Adapter.Platform` | Adapter | The hosting platform is an external system. Each platform announces itself differently; this project translates all of them into one contract. | Nothing in the solution |
+| `MultiCloud.Adapter.Notes` | Adapter | Owns one data store, the in-memory `Notes` database. | Nothing in the solution |
+| `MultiCloud.Orchestrator.Heartbeat` | Orchestrator | A scheduled task is an entry point, and entry points live in Orchestrators. | `MultiCloud.Adapter.Platform` |
+| `MultiCloud.Test.Unit` | Test | | Any |
+
+> **Open decision D1, for Matt, before the first build session.** The agreed shape was one Application, one Adapter
+> for the database, and one test project. This design adds `MultiCloud.Adapter.Platform` and
+> `MultiCloud.Orchestrator.Heartbeat`, because the architecture skill puts a scheduled task in an Orchestrator and an
+> external system behind an Adapter. The alternative keeps both inside the Application as hosting concerns: two fewer
+> projects, and a recorded departure from the skill. This document is written for the five-project shape. If the
+> answer is the three-project shape, sections 5 and 6 move into `MultiCloud.Application.Web` under `Platform/` and
+> `Heartbeat/` folders and nothing else changes.
+
+### Precedent to read before writing code
+
+The repository `Razor-Pages-With-HTMX` (same owner, public, cloned beside this one at `C:\Source\HTMX`) is the
+existing solution of the same shape. Read these before creating the matching piece here, and build on their form:
+
+- `src/HTMX.Adapter.Customers/Data/InMemoryDatabase.cs`: the SQLite in-memory database kept alive by one open
+  connection. `MultiCloud.Adapter.Notes` uses the same pattern.
+- `src/HTMX.Adapter.Customers/ServiceCollectionExtensions.cs` and its `Configuration/` and `Contracts/` folders: the
+  public surface of an Adapter.
+- The three `.csproj` files and `src/Directory.Build.props`: how little a project file needs to state.
+- `src/HTMX.Test.Unit/`: test naming and structure, and the use of a fake `TimeProvider`.
+
+## 4. The web application
+
+MVC controllers with views. No Razor Pages, no minimal-API endpoints. API controllers carry `[ApiController]`.
+
+### 4.1 Routes
+
+| Verb | Route | Action | Answer |
+|---|---|---|---|
+| GET | `/` | `HomeController.Index` | HTML page, section 4.2 |
+| GET | `/healthz/ping` | `HealthController.Ping` | 200, `text/plain`, body `up` |
+| GET | `/healthz/ready` | `HealthController.Ready` | 200 `ready`, or 503 `not ready` |
+| GET | `/healthz/error/500` | `HealthController.Error500` | Throws. 500 problem details |
+| GET | `/healthz/error/403` | `HealthController.Error403` | Throws. 403 problem details |
+| GET | `/api/notes` | `NotesController.List` | 200, JSON array |
+| GET | `/api/notes/{id}` | `NotesController.Read` | 200, or 404 |
+| HEAD | `/api/notes/{id}` | `NotesController.Exists` | 200 or 404, no body |
+| OPTIONS | `/api/notes` | `NotesController.Options` | 204 with an `Allow` header |
+| POST | `/api/notes` | `NotesController.Create` | 201 with a `Location` header |
+| PUT | `/api/notes/{id}` | `NotesController.Replace` | 200, or 404 |
+| PATCH | `/api/notes/{id}` | `NotesController.Change` | 200, or 404 |
+| DELETE | `/api/notes/{id}` | `NotesController.Delete` | 204, or 404 |
+
+Every URL is lower case.
+
+### 4.2 The home page
+
+One read-only view, plain HTML and one small stylesheet. No script, no form, nothing loaded from another site. It
+shows:
+
+- The platform, as section 5 describes it.
+- The session identifier and when the session started (section 7).
+- The application version and the environment name.
+- The request as the application sees it: scheme, host and remote address. Behind a platform's proxy these show
+  whether forwarded headers are being honored.
+- Links to every GET route above.
+
+### 4.3 Health routes
+
+- **`/healthz/ping` has no dependencies and never will.** It returns the constant text `up`. It is what an outside
+  monitor such as Dynatrace calls. If it checked a dependency, one failing dependency would make every instance look
+  dead at once. Say so in a comment on the action.
+- **`/healthz/ready`** answers whether this instance should receive traffic. In phase 1 it returns `ready` once the
+  host has finished starting and `not ready` with 503 once the host has begun stopping, so a platform stops sending
+  requests to an instance that is shutting down. The action carries a comment marking where dependency checks are
+  added later.
+- **The two error routes exist to prove error handling and error logging end to end.** `Error500` throws an ordinary
+  exception. `Error403` throws the application's own exception type that carries a status code (ASP.NET Core has no
+  built-in one). Both are caught by one global exception handler (section 4.4).
+- **A setting turns the error routes off.** `Diagnostics:ErrorRoutesEnabled` defaults to `true`. When `false`, both
+  routes answer 404 and throw nothing.
+
+### 4.4 Cross-cutting behavior
+
+- **Exception handling.** One `IExceptionHandler` with problem details. An exception carrying a status code is
+  answered with that status and logged as a warning; anything else is answered with 500 and logged as an error with
+  the exception. The problem details body includes the session identifier.
+- **Response headers on every response.** `X-Session-Id` (the session identifier) and `X-Platform` (the platform
+  name). A 403 or a 500 without these headers did not come from the application.
+- **Request logging.** One log line per request, written after the response, with verb, path, status and duration.
+  `/healthz/ping` and `/healthz/ready` are left out, because probes call them every few seconds. The error routes
+  are not left out.
+- **Forwarded headers.** Every target platform ends HTTPS at a proxy in front of the container. The application
+  honors `X-Forwarded-For` and `X-Forwarded-Proto`. In phase 1 this is switched on by an environment variable set in
+  the image, not by code.
+- **No HTTPS redirection and no HSTS in the application.** The platform owns HTTPS.
+- **Port.** When the environment variable `PORT` is set, the application listens on that port on all interfaces.
+  When it is not, the framework default applies: 8080 in the container image, the launch profile on a developer
+  machine.
+- **Shutdown.** The host's shutdown timeout is read from `Host:ShutdownTimeoutInSeconds`, default 8. Platforms send
+  a stop signal and then kill the process after a grace period; the shortest of the three is about 10 seconds.
+- **Nothing that needs shared state between instances:** no cookies, no anti-forgery tokens, no session state, no
+  data protection keys.
+
+## 5. Platform detection (`MultiCloud.Adapter.Platform`)
+
+One contract: read the platform description. The description holds the platform name, the cloud provider, the
+region, the name of the deployed service, its revision, and the name of this instance. A value the platform does not
+supply is absent, never guessed.
+
+Detection reads environment variables only. No network call in phase 1. Environment variables are read through an
+injected abstraction so tests supply their own.
+
+| Checked in this order | Variable that identifies it | Platform name | Other values, where the platform supplies them |
+|---|---|---|---|
+| 1 | `K_SERVICE` | Google Cloud Run | Service `K_SERVICE`, revision `K_REVISION` |
+| 2 | `ECS_CONTAINER_METADATA_URI_V4` | AWS ECS | Region `AWS_REGION` |
+| 3 | `KUBERNETES_SERVICE_HOST` | Kubernetes | Instance `HOSTNAME` (the pod name) |
+| 4 | `DOTNET_RUNNING_IN_CONTAINER` | Container, platform not identified | Instance `HOSTNAME` |
+| 5 | none of the above | Local process | Instance: the machine name |
+
+**These variable names are from memory and are not verified.** Phase 1 can only prove rows 4 and 5. Each cloud phase
+checks its own row against what the platform actually sets and corrects this table and the code together.
+
+Public surface: `Configuration/`, `Contracts/` and `ServiceCollectionExtensions`, nothing else.
+
+## 6. The heartbeat (`MultiCloud.Orchestrator.Heartbeat`)
+
+A hosted background service that writes a heartbeat log message through `ILogger`. It is how a person confirms that
+log lines are reaching a log system, and tells one run of the application from the next.
+
+| Kind | When | Sequence |
+|---|---|---|
+| `Started` | Once, as soon as the service starts. Nobody waits a full interval for the first line. | 0 |
+| `Running` | Every `Heartbeat:WaitInSeconds` seconds after that | 1, 2, 3 and so on |
+| `Stopping` | Once, when the host signals shutdown | The next number |
+
+All three kinds have the same shape, so one search finds the whole life of a session. Each carries the kind, the
+sequence number, the seconds since the session started, the configured wait, the .NET runtime version and the
+operating system description. The session, version, environment and platform values are already on every log line
+(section 7), so the heartbeat does not repeat them in its own message.
+
+- **`Heartbeat:WaitInSeconds`** defaults to 600. A value below 1 stops the application at startup with a message
+  that names the setting.
+- **The sequence number is how a dropped message is noticed:** a gap in the numbers for one session.
+- **A `Stopping` line is only written on a polite shutdown.** A container that is killed writes none. A `Started`
+  line from a new session with no `Stopping` line from the one before is the sign of that.
+- **The heartbeat never writes environment variables or configuration values wholesale.** They can hold secrets.
+- **Testability.** The timing uses the injected `TimeProvider`, so a test advances a fake clock. The code that
+  composes and writes one heartbeat is separate from the loop that decides when.
+- The host constructs the options object, including the session, and passes it to the registration. The project does
+  not read configuration itself.
+
+## 7. Logging and the session
+
+- **Serilog is the logging provider.** Application code logs through `ILogger<T>` only. Serilog's own static logger
+  appears in `Program.cs` alone, for the bootstrap logger and the final flush.
+- **One sink by default: the console, one JSON object per line.** Every target platform collects standard output.
+  Sending logs to Splunk or anywhere else is a platform setting in a later phase, or a Serilog sink added through
+  configuration; no log system's package is referenced in phase 1.
+- **Serilog is configured from configuration** (`Serilog` section), so a level or a sink changes without a code
+  change.
+- **A bootstrap logger** exists before the host is built, so a failure during startup is logged. The log is flushed
+  in a `finally` block as the process exits.
+- **The session.** `Program.cs` creates one session when the process starts: a version 7 UUID and the start time.
+  A session is one run of one instance of the application. It is not a user's session.
+- **Every log line is enriched** with the properties below. The names are OpenTelemetry's semantic convention names,
+  so a log system that knows those conventions recognizes them.
+
+| Property | Value |
+|---|---|
+| `service.name` | `multi-cloud-dotnet-container` |
+| `service.version` | The application's informational version |
+| `service.instance.id` | The session identifier |
+| `deployment.environment.name` | The host environment name |
+| `cloud.provider` | From platform detection, when known |
+| `cloud.platform` | From platform detection, when known |
+| `cloud.region` | From platform detection, when known |
+| `host.name` | The machine name, which in a container is the container's host name |
+
+These are set by an enricher, not through message templates, because a message template property name cannot
+contain a dot. Confirm the names against the published conventions when writing the enricher, and record any that
+differ.
+
+## 8. The Notes database (`MultiCloud.Adapter.Notes`)
+
+Exists so that every HTTP verb has something real to do.
+
+- Entity Framework Core over SQLite in memory, held open by one connection for the life of the process, as the
+  precedent does it. Created and seeded with three invented notes at startup. Nothing is written to disk.
+- A note has an identifier assigned by the database, a text (required, 1 to 200 characters), a done flag, and the
+  times it was created and last changed, in UTC.
+- PUT replaces the text and the done flag and requires both. PATCH changes whichever of the two it is given.
+- A request that fails validation is answered 400 with problem details.
+- **The data lives inside one process.** With two instances behind a load balancer, a note created on one is absent
+  on the other, and a restart empties it. That is expected; the `X-Session-Id` header on each response shows which
+  instance answered. Say so in the install files.
+- Public surface: `Configuration/`, `Contracts/` and `ServiceCollectionExtensions`. The database context, the
+  entity and the service are internal.
+
+## 9. Configuration
+
+Every setting has a default in `appsettings.json` and is overridden by an environment variable, with `__` standing
+for `:`.
+
+| Setting | Environment variable | Default | Meaning |
+|---|---|---|---|
+| `Heartbeat:WaitInSeconds` | `Heartbeat__WaitInSeconds` | `600` | Seconds between `Running` heartbeats |
+| `Diagnostics:ErrorRoutesEnabled` | `Diagnostics__ErrorRoutesEnabled` | `true` | Whether the two error routes throw or answer 404 |
+| `Host:ShutdownTimeoutInSeconds` | `Host__ShutdownTimeoutInSeconds` | `8` | How long the host waits for work to finish on shutdown |
+| `Notes:DatabaseName` | `Notes__DatabaseName` | `Notes` | Name of the in-memory database |
+| `Serilog:*` | `Serilog__*` | Console, JSON, `Information` | Levels and sinks |
+| (none) | `PORT` | not set | Port to listen on, when the platform supplies one |
+
+No setting is a secret, and no secret is needed in phase 1.
+
+## 10. The container image
+
+- `Dockerfile` at the repository root, two stages: the .NET 10 SDK image builds and publishes
+  `MultiCloud.Application.Web` in Release; the ASP.NET Core 10 runtime image runs it.
+- Project files and `Directory.Build.props` are copied and restored before the source, so a source change does not
+  repeat the restore.
+- `src/.editorconfig` is in the build context, so the analyzers behave in the image build as they do on a developer
+  machine. Warnings are errors in both.
+- The process runs as the image's non-root user.
+- Port 8080 is exposed.
+- The image sets the environment variable that switches forwarded headers on.
+- `.dockerignore` keeps `bin`, `obj`, `.git`, `.vs` and `.claude` out of the build context.
+- The image is built for `linux/amd64`. Tests are not run in the image build.
+
+## 11. Tests
+
+MSTest, written as the `code-csharp-mstest` skill describes. Unit tests only in phase 1.
+
+- Platform detection: one test per row of the table in section 5, the order of the checks, and absent values.
+- Heartbeat: the three kinds, the sequence, the first line without waiting, the interval under a fake clock, and
+  the rejected setting.
+- Notes: each operation, the validation rules, and the not-found answers.
+- Health controller: ping, ready in each host state, and the error routes with the setting on and off.
+- Exception handler: the status-carrying exception and the ordinary one.
+
+`MultiCloud.Application.Web` also holds a `.http` file with one request for every route in section 4.1, so every
+verb can be sent from Visual Studio.
+
+## 12. Documents the first session writes
+
+- `docs/INSTALL-local.md`, with these headings, which every later install file repeats: Prerequisites, One-time
+  setup, Build, Run, Verify, Tear down, What is different here. The Verify section gives a `curl` command for every
+  route and verb.
+- `README.md`: replace the placeholder sections with the routes, the settings, and the exact version of every
+  package and base image chosen.
+
+## 13. Acceptance for phase 1
+
+Run by Matt, against the container, not against `dotnet run`, because the image is the deliverable. Start it with
+`Heartbeat__WaitInSeconds=15`.
+
+If the image does not build, the container does not start, or the port cannot be reached, the checks below did not
+run. That is a build or setup failure to fix first, not a failed check.
+
+| # | Check | Passes when |
+|---|---|---|
+| 1 | Build and test the solution | No warnings, no errors, every test passes |
+| 2 | Inspect the running container's user | It is not root |
+| 3 | GET `/healthz/ping` | 200 and the body is exactly `up` |
+| 4 | Compare the `X-Session-Id` header from check 3 with the first heartbeat in `docker logs` | The log line is one JSON object, its kind is `Started`, and its `service.instance.id` equals the header |
+| 5 | Wait 30 seconds and read the logs | `Running` heartbeats with sequence 1 and 2, about 15 seconds apart |
+| 6 | `docker stop`, then start a new container | The old logs end with a `Stopping` heartbeat; the new container has a different session identifier |
+| 7 | GET both error routes | 500 with an error log line holding the exception; 403 with a warning log line; both responses carry `X-Session-Id` |
+| 8 | Restart with `Diagnostics__ErrorRoutesEnabled=false` and GET both error routes | 404 for both, and no error or warning log line |
+| 9 | Send POST, GET, HEAD, PUT, PATCH, OPTIONS and DELETE to the notes routes, then GET the deleted note | 201, 200, 200, 200, 200, 204, 204, then 404 |
+| 10 | Read the request log after checks 3 to 9 | The notes and error requests are logged; no ping or ready request is |
+| 11 | Open `/` in the container, then under `dotnet run` | "Container, platform not identified" in the first; "Local process" in the second |
+
+Check 4 is the one that matters most: it proves in one step that the session identifier, the enrichment, the
+heartbeat and the response header all come from the same run.
+
+## 14. Not verified when this was written
+
+Written from memory or from design, and to be confirmed by the session that builds it:
+
+- The platform environment variable names in section 5.
+- That Serilog accepts dotted property names from an enricher and writes them as plain JSON keys.
+- The OpenTelemetry semantic convention names in section 7.
+- The name of the environment variable that switches forwarded headers on, and that it trusts the proxy in front of
+  the container on each target platform.
+- That the SQLite native library loads in the ASP.NET Core 10 runtime image as the non-root user.
+
+Anything in this list that turns out different is corrected here in the same change that discovers it.

@@ -1,0 +1,87 @@
+{
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Bash(awk:*)",
+      "Bash(cat:*)",
+      "Bash(curl http://localhost:*)",
+      "Bash(cut:*)",
+      "Bash(diff:*)",
+      "Bash(docker build:*)",
+      "Bash(docker images:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker version)",
+      "Bash(dotnet --info)",
+      "Bash(dotnet --version)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet watch:*)",
+      "Bash(dotnet format:*)",
+      "Bash(echo:*)",
+      "Bash(find:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(ls:*)",
+      "Bash(printf:*)",
+      "Bash(sort:*)",
+      "Bash(tail:*)",
+      "Bash(tr:*)",
+      "Bash(uniq:*)",
+      "Bash(wc:*)",
+      "PowerShell(docker build:*)",
+      "PowerShell(docker images:*)",
+      "PowerShell(docker inspect:*)",
+      "PowerShell(docker logs:*)",
+      "PowerShell(docker ps:*)",
+      "PowerShell(docker version)",
+      "PowerShell(dotnet build:*)",
+      "PowerShell(dotnet test:*)",
+      "PowerShell(dotnet run:*)",
+      "PowerShell(dotnet watch:*)",
+      "PowerShell(dotnet format:*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)"
+    ]
+  },
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "async": true,
+            "timeout": 10,
+            "statusMessage": "Logging permission request",
+            "command": "mkdir -p \"$HOME/.claude/permission-logs\" && { printf '{\"ts\":\"%s\",\"agent\":\"%s\",\"payload\":' \"$(date -Iseconds)\" \"$(basename \"$CLAUDE_PROJECT_DIR\")\"; tr -d '\\n'; printf '}\\n'; } >> \"$HOME/.claude/permission-logs/$(basename \"$CLAUDE_PROJECT_DIR\").jsonl\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "timeout": 10,
+            "statusMessage": "git guardrail (handback)",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/git-guardrail/git_guardrail.py\" --profile handback --log \"$HOME/.claude/git-guardrail-denies.jsonl\""
+          }
+        ]
+      }
+    ]
+  }
+}
