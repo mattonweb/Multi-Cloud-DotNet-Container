@@ -13,6 +13,8 @@
   which unverified items the build confirmed and which still wait on the container.
 - **2026-11-10 (attended session with Matt): no views; the application is a JSON API** (`docs/SDD.md`, decision
   D7). `GET /` answers JSON, and the Stack section below says controllers without views.
+- **2026-11-11 (attended session with Matt): GitHub Actions workflows, started only by hand** (`docs/SDD.md`
+  section 16, decision D9). The working agreement and the layout below now say so.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -27,7 +29,8 @@ confirm each item as you reach it, and correct the design in the same change.
 
 ## Working agreement — Matt commits; you never do
 
-All work happens on `main`. There are no feature branches, no pull requests and no pipeline. You change files in the
+All work happens on `main`, with no feature branches and no pull requests; the workflows in `.github/workflows/`
+run only when Matt starts them (`docs/SDD.md` section 16), and you never run them. You change files in the
 working tree, build and test, and stop. **Matt reviews the tree and makes every commit himself, under his own
 identity.** A hook (`.claude/hooks/git-guardrail`, `handback` profile) denies `git commit`, `git push`, `git merge`,
 `git rebase`, `git reset`, forced or destructive forms of the other git commands, and anything that rewrites history.
@@ -78,6 +81,9 @@ from it.
 ```
 Dockerfile                                 the one image definition
 .dockerignore                              keeps bin, obj, .git, .vs and .claude out of the build context
+.github/workflows/
+  publish-image.yml                        builds the image once, publishes it to ghcr.io; started by hand
+  deploy-<cloud>.yml                       one per cloud: copies the image by digest, deploys it; started by hand
 docs/
   SDD.md                                   the solution design
   INSTALL-local.md                         run it with dotnet, run it with Docker
@@ -121,7 +127,8 @@ change spans the repository.** `web` (the MVC application), `platform` (platform
 background heartbeat), `data` (the Notes database), `tests` (the unit tests), `container` (the `Dockerfile` and
 `.dockerignore`), `deps` (package and base-image updates), `docs` (`README.md`, the design and the install files),
 `skills` (the junctions and their gitignore lines), `charter` (this file). A scope that is not here is added to this
-list in its own commit before the commit that uses it; never invented in the message.
+list in its own commit before the commit that uses it; never invented in the message. A change to the workflows is
+type `ci` with no scope.
 
 **The 500-line ceiling (`code-csharp-standards` section 8): the named-exception list for this repository is
 EMPTY**, and the repository starts with no files over it. A file that needs to exceed the ceiling gets its entry
