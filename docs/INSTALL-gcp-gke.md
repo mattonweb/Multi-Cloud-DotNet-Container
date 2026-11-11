@@ -192,9 +192,9 @@ gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:gith
 2. **Deploy.** Choose **Deploy to Google Kubernetes Engine**, then **Run workflow**. Leave the tag blank to deploy the
    newest image Publish image pushed, or enter a tag to deploy that one. The workflow checks that every new pod runs
    the copied digest, then waits for a new pod to answer through the load balancer: `up`, the platform "Kubernetes",
-   and the caller's address, the runner's, rather than the load balancer's. The first run after the Ingress is
-   created waits several minutes for the load balancer. The summary names the tag, the digest, the deployment's
-   revision and the pod.
+   and the caller's address, the runner's, rather than the load balancer's. With the cluster and the Ingress already
+   in place, a run takes about a minute; the first run after the Ingress is created waits several minutes more for
+   the load balancer. The summary names the tag, the digest, the deployment's revision and the pod.
 3. **Verify** as in the Verify section above, after setting `IP` in Cloud Shell with Run step 3.
 
 ## Tear down
@@ -225,7 +225,8 @@ gcloud projects remove-iam-policy-binding <your-project-id> --member="serviceAcc
 - **Two proxies' entries in `X-Forwarded-For`.** Google's load balancer appends the caller's address and then its
   own public address, where Cloud Run's front end appends only the caller's. The first deploy, with the default of
   trusting one entry, reported the load balancer as the caller; the deployment now sets
-  `ForwardedHeaders__ForwardLimit` to 2 ([SDD.md](SDD.md) decision D11). The scheme is `http`, as the caller used.
+  `ForwardedHeaders__ForwardLimit` to 2 ([SDD.md](SDD.md) decision D11), and the workflow's first run, with image
+  `2026.1111.5`, reported the caller. The scheme is `http`, as the caller used.
 - **The port** is the image's own 8080; nothing sets `PORT`.
 - **Kubernetes probes the application itself**: startup and liveness on `/healthz/ping`, readiness on
   `/healthz/ready`, which the load balancer's health check follows. None of them appears in the request log.

@@ -30,7 +30,7 @@ defect in the design, and is raised before it is made.
 |---|---|---|
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
 | 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand and by its workflow on 2026-11-11; not designed here |
-| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | In progress: deployed by hand on 2026-11-11; its workflow is written and has not run yet (section 17) |
+| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | In progress: deployed by hand and by its workflow on 2026-11-11 (section 17) |
 | 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
 
 Each later phase adds an install file and whatever platform settings it needs. Each install file is written as
@@ -459,6 +459,12 @@ turns out different is corrected here in the same change that discovers it.
   `2026.1111.2` from `ghcr.io`, signed in through Workload Identity Federation, copied the image to Artifact Registry
   with its digest unchanged (`docker buildx imagetools create --prefer-index=false`), deployed that digest as a new
   revision, and checked that the revision answered. The project's ID and number showed masked throughout the log.
+- **Deploy to Google Kubernetes Engine deploys the published bytes, and the caller is reported.** Its first run, with
+  the tag left blank, chose `2026.1111.5`, the first image that reads `ForwardedHeaders:ForwardLimit`, and copied it
+  to Artifact Registry with its digest unchanged. Applying `deploy/gke/` changed only the deployment; the rollout
+  replaced the pod in about 20 seconds, and the new pod ran the copied digest. Through the load balancer, the new pod
+  answered the first request, reporting "Kubernetes" and the runner's own public address as the caller's. The
+  project's ID and the load balancer's address showed masked throughout the log.
 
 **Confirmed on Google Kubernetes Engine, deployed by hand, 2026-11-11** (section 17):
 
@@ -474,15 +480,15 @@ turns out different is corrected here in the same change that discovers it.
 - **Finding: behind two proxies, the default trusts only one.** The root route reported the load balancer's own public
   address as the caller's. Google's load balancer appends two entries to `X-Forwarded-For`, the caller's address and
   then its own, where Cloud Run's front end appends one, and the framework's default limit trusts only the rightmost
-  entry. Decision D11 makes the limit a setting, which GKE's deployment sets to 2.
+  entry. Decision D11 makes the limit a setting, which GKE's deployment sets to 2; the first run of Deploy to Google
+  Kubernetes Engine confirmed the caller's address is reported with it.
 
 **Still to confirm:**
 
 - Row 2 of the platform table, in phase 4.
 - That forwarded headers are trusted from the proxy in front of the container on ECS, in phase 4.
-- That `ForwardedHeaders__ForwardLimit` at 2 reports the caller's address on GKE, and that the default of 1 leaves
-  Cloud Run as it was. Deploy to GKE checks the first on its first run; the next Cloud Run deploy shows the second.
-- That Deploy to GKE deploys the published bytes, as Deploy to Google Cloud Run does.
+- That the default of 1 leaves Cloud Run reporting the caller's address, on the first Cloud Run deploy of an image
+  that reads `ForwardedHeaders:ForwardLimit` (`2026.1111.5` or later).
 
 ## 15. Decisions
 
