@@ -8,6 +8,9 @@
 - **2026-11-10 (attended session with Matt): the design's open questions were decided** (`docs/SDD.md` section 15).
   Five projects, and the heartbeat Orchestrator references no other project. The solution architecture paragraph
   below now says so.
+- **2026-11-10 (attended session with Matt): the first build created the solution**, the `Dockerfile` and
+  `docs/INSTALL-local.md`. The layout section below is now what exists, not a plan. `docs/SDD.md` section 14 says
+  which unverified items the build confirmed and which still wait on the container.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -67,10 +70,11 @@ from it.
 - Docker for the image. One `Dockerfile` at the repository root.
 - Every package and base image is pinned to one exact version, recorded in `README.md`.
 
-## Layout (planned; created by the first session from `docs/SDD.md`)
+## Layout
 
 ```
 Dockerfile                                 the one image definition
+.dockerignore                              keeps bin, obj, .git, .vs and .claude out of the build context
 docs/
   SDD.md                                   the solution design
   INSTALL-local.md                         run it with dotnet, run it with Docker
@@ -86,8 +90,11 @@ src/
   MultiCloud.Test.Unit/                    the unit tests
 ```
 
-`src/Directory.Build.props` and `src/.editorconfig` already exist. Update this section, and add a Recent-changes
-line, in the session that creates the solution.
+Inside each class library, only `Configuration/`, `Contracts/` and `ServiceCollectionExtensions` are public; data
+types that stay inside are under `DTOs/` or `Entities/`, behavior under `Services/` or `Data/`. The web application
+keeps its public data types (the view model, the JSON bodies, the session) under `Models/`, the MVC convention, and
+groups its behavior by concern: `Controllers/`, `Hosting/`, `Errors/`, `Logging/`, `Json/`, `Mapping/`.
+`MultiCloud.Application.Web.http` holds one request for every route.
 
 ## Skills: owned by Matt
 
