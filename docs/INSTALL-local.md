@@ -132,9 +132,11 @@ BASE=http://localhost:8080
    docker rm multi-cloud && docker run --detach --name multi-cloud --publish 8080:8080 --env Heartbeat__WaitInSeconds=15 multi-cloud-dotnet-container:local
    ```
 
-7. **The error routes.** Expect `500` with problem details and an error log line holding the exception, then `403`
-   with problem details and a warning log line. Both responses carry `X-Session-Id`, and both bodies carry
-   `sessionId`: a 403 or 500 without them did not come from the application.
+7. **The error routes.** They are on by default. Expect `500`, then `403`, each with
+   `Content-Type: application/problem+json` and a Problem Details body (RFC 9457) holding `type`, `title`, `status`
+   and `sessionId`; the 403 also has a `detail`. A client that expects JSON gets JSON. The 500 writes an error log
+   line holding the exception, the 403 a warning. Both responses carry `X-Session-Id`: a 403 or 500 without it, or
+   with a body that is not Problem Details, did not come from the application.
 
    ```bash
    curl -i $BASE/healthz/error/500

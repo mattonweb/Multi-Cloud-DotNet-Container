@@ -142,11 +142,14 @@ shows:
   connect instead. Either answer takes the instance out of rotation. A platform that needs a longer drain gets it
   from a platform setting, such as a pre-stop hook or a deregistration delay, decided in that platform's phase; never
   from a delay in code (decision D5). The action carries a comment marking where dependency checks are added later.
-- **The two error routes exist to prove error handling and error logging end to end.** `Error500` throws an ordinary
-  exception. `Error403` throws the application's own exception type that carries a status code (ASP.NET Core has no
-  built-in one). Both are caught by one global exception handler (section 4.4).
-- **A setting turns the error routes off.** `Diagnostics:ErrorRoutesEnabled` defaults to `true`. When `false`, both
-  routes answer 404 and throw nothing.
+- **The two error routes exist to prove that an error comes back as JSON a client can read**: Problem Details, as RFC
+  9457 (formerly RFC 7807) defines it, with the media type `application/problem+json`. A client that expects JSON
+  gets JSON, from the application, through whatever stands in front of it. They also prove error handling and error
+  logging end to end. `Error500` throws an ordinary exception. `Error403` throws the application's own exception type
+  that carries a status code (ASP.NET Core has no built-in one). Both are caught by one global exception handler
+  (section 4.4).
+- **The error routes are on by default.** `Diagnostics:ErrorRoutesEnabled` defaults to `true`, in every environment.
+  A setting can turn them off: when `false`, both routes answer 404, itself Problem Details, and throw nothing.
 
 ### 4.4 Cross-cutting behavior
 
@@ -365,7 +368,7 @@ run. That is a build or setup failure to fix first, not a failed check.
 | 4 | Compare the `X-Session-Id` header from check 3 with the first heartbeat in `docker logs` | The log line is one JSON object, its kind is `Started`, and its `service.instance.id` equals the header |
 | 5 | Wait 30 seconds and read the logs | `Running` heartbeats with sequence 1 and 2, about 15 seconds apart |
 | 6 | `docker stop`, then start a new container | The old logs end with a `Stopping` heartbeat; the new container has a different session identifier |
-| 7 | GET both error routes | 500 with an error log line holding the exception; 403 with a warning log line; both responses carry `X-Session-Id` |
+| 7 | GET both error routes | 500 with an error log line holding the exception; 403 with a warning log line; both are `application/problem+json` with `type`, `title`, `status` and `sessionId`, and carry `X-Session-Id` |
 | 8 | Restart with `Diagnostics__ErrorRoutesEnabled=false` and GET both error routes | 404 for both, and no error or warning log line |
 | 9 | Send POST, GET, HEAD, PUT, PATCH, OPTIONS and DELETE to the notes routes, then GET the deleted note | 201, 200, 200, 200, 200, 204, 204, then 404 |
 | 10 | Read the request log after checks 3 to 9 | The notes and error requests are logged; no ping or ready request is |
