@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Target framework, language version and analyzers come from src/Directory.Build.props. -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The unit tests reach the internal types that the public contracts do not expose. -->
+    <InternalsVisibleTo Include="MultiCloud.Test.Unit" />
+  </ItemGroup>
+
+</Project>

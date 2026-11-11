@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Target framework, language version and analyzers come from src/Directory.Build.props. -->
+
+  <PropertyGroup>
+    <!--
+      The version every log line and the home page report. The SDK would append the source control commit to it, and
+      the image is built without .git, so dotnet run and the image would disagree; the suffix is off so they report
+      the same version (docs/SDD.md, decision D4).
+    -->
+    <Version>0.1.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MultiCloud.Adapter.Notes\MultiCloud.Adapter.Notes.csproj" />
+    <ProjectReference Include="..\MultiCloud.Adapter.Platform\MultiCloud.Adapter.Platform.csproj" />
+    <ProjectReference Include="..\MultiCloud.Orchestrator.Heartbeat\MultiCloud.Orchestrator.Heartbeat.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The unit tests reach the internal types that the controllers do not expose. -->
+    <InternalsVisibleTo Include="MultiCloud.Test.Unit" />
+  </ItemGroup>
+
+</Project>

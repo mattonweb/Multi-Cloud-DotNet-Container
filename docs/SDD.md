@@ -1,7 +1,8 @@
 # Solution Design: Multi-Cloud DotNet Container
 
-Status: phase 1 (runs locally and in a local container) is ready to build. Written 2026-11-10; its open questions
-were decided the same day (section 15). Nothing in this document has been built or run yet.
+Status: phase 1 (runs locally and in a local container) is built. Written 2026-11-10; its open questions were decided
+the same day (section 15). The solution builds and its unit tests pass; section 14 says what the first build
+confirmed and what still waits on the container.
 
 ## 1. Purpose
 
@@ -100,8 +101,8 @@ MVC controllers with views. No Razor Pages, no minimal-API endpoints. API contro
 | GET | `/` | `HomeController.Index` | HTML page, section 4.2 |
 | GET | `/healthz/ping` | `HealthController.Ping` | 200, `text/plain`, body `up` |
 | GET | `/healthz/ready` | `HealthController.Ready` | 200 `ready`, or 503 `not ready` |
-| GET | `/healthz/error/500` | `HealthController.Error500` | Throws. 500 problem details |
-| GET | `/healthz/error/403` | `HealthController.Error403` | Throws. 403 problem details |
+| GET | `/healthz/error/500` | `DiagnosticsController.Error500` | Throws. 500 problem details |
+| GET | `/healthz/error/403` | `DiagnosticsController.Error403` | Throws. 403 problem details |
 | GET | `/api/notes` | `NotesController.List` | 200, JSON array |
 | GET | `/api/notes/{id}` | `NotesController.Read` | 200, or 404 |
 | HEAD | `/api/notes/{id}` | `NotesController.Exists` | 200 or 404, no body |
@@ -112,6 +113,10 @@ MVC controllers with views. No Razor Pages, no minimal-API endpoints. API contro
 | DELETE | `/api/notes/{id}` | `NotesController.Delete` | 204, or 404 |
 
 Every URL is lower case.
+
+The probes and the error routes share the `/healthz` prefix but are two controllers. As one, SonarAnalyzer's S6960
+found two responsibilities in it, and the build failed: the probes depend on the host's state, the error routes on
+the `Diagnostics` setting. The routes are unchanged.
 
 ### 4.2 The home page
 
@@ -270,6 +275,9 @@ Exists so that every HTTP verb has something real to do.
 - A note has an identifier assigned by the database, a text (required, 1 to 200 characters), a done flag, and the
   times it was created and last changed, in UTC.
 - PUT replaces the text and the done flag and requires both. PATCH changes whichever of the two it is given.
+- POST requires the text; the done flag is false when left out. Every PUT and PATCH marks the note changed now, even
+  when the values sent are the ones it holds. OPTIONS `/api/notes` answers `Allow: GET, POST, OPTIONS`, the verbs that
+  route itself answers. (Written by the first build where the design was silent; to be confirmed.)
 - A request that fails validation is answered 400 with problem details.
 - **The data lives inside one process.** With two instances behind a load balancer, a note created on one is absent
   on the other, and a restart empties it. That is expected; the `X-Session-Id` header on each response shows which
@@ -316,7 +324,8 @@ MSTest, written as the `code-csharp-mstest` skill describes. Unit tests only in 
 - Heartbeat: the three kinds, the sequence, the first line without waiting, the interval under a fake clock, and
   the rejected setting.
 - Notes: each operation, the validation rules, and the not-found answers.
-- Health controller: ping, ready in each host state, and the error routes with the setting on and off.
+- Health controller: ping, and ready in each host state. Diagnostics controller: the error routes with the setting
+  on and off.
 - Exception handler: the status-carrying exception and the ordinary one.
 
 `MultiCloud.Application.Web` also holds a `.http` file with one request for every route in section 4.1, so every
@@ -357,21 +366,32 @@ heartbeat and the response header all come from the same run.
 
 ## 14. Not verified when this was written
 
-Written from memory or from design, and to be confirmed by the session that builds it:
+Written from memory or from design, and to be confirmed by the session that builds it. Anything in this list that
+turns out different is corrected here in the same change that discovers it.
 
-- The platform environment variable names in section 5.
-- That Serilog accepts dotted property names from an enricher and writes them as plain JSON keys.
-- The OpenTelemetry semantic convention names in section 7, and the well-known `cloud.provider` and
-  `cloud.platform` values in section 5.
+**Confirmed by the first build, 2026-11-10:**
+
+- **Serilog accepts dotted property names from an enricher** and `RenderedCompactJsonFormatter` writes them as plain
+  top-level JSON keys, such as `"service.instance.id":"…"`.
+- **The OpenTelemetry names and values exist** in the semantic conventions registry (`open-telemetry/semantic-conventions`,
+  `model/`, main branch): `service.name`, `service.version`, `service.instance.id` and `deployment.environment.name` are
+  stable; `cloud.provider`, `cloud.platform`, `cloud.region` and `host.name` are still marked development. The values
+  `gcp`, `aws`, `gcp_cloud_run` and `aws_ecs` are all listed.
+- **The SDK appends the commit to the informational version by default** (an assembly built from this tree without
+  the setting reports `1.0.0+61cc46e…`), and `IncludeSourceRevisionInInformationalVersion` set to `false` turns it off
+  (`MultiCloud.Application.Web` reports `0.1.0`).
+- **Row 5 of the platform table**: under `dotnet run` the platform is "Local process", named by the machine.
+
+**Still to confirm:**
+
+- The platform environment variable names in section 5. Row 4 needs the container (acceptance check 11); rows 1 to 3
+  need their cloud phases.
+- That a build with no `.git` in its context raises no warning, since warnings are errors (section 7).
 - The name of the environment variable that switches forwarded headers on, and that it trusts the proxy in front of
   the container on each target platform.
 - That the SQLite native library loads in the ASP.NET Core 10 runtime image as the non-root user.
-- That the .NET SDK appends the commit to the informational version by default, which property turns that off, and
-  that a build with no `.git` in its context raises no warning, since warnings are errors (section 7).
 - How long the server keeps accepting connections after the stop signal, which bounds how long `/healthz/ready` can
   answer 503 (section 4.3).
-
-Anything in this list that turns out different is corrected here in the same change that discovers it.
 
 ## 15. Decisions
 

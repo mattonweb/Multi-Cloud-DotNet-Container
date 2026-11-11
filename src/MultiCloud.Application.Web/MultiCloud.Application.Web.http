@@ -1,0 +1,68 @@
+# One request for every route in docs/SDD.md section 4.1, to send from Visual Studio or Visual Studio Code.
+# Start the application first. Under dotnet run it listens on 5080; the container on 8080, so change @host for it.
+
+@host = http://localhost:5080
+
+### The home page: where the application thinks it is running
+GET {{host}}/
+
+### Liveness: always 200 and the text "up"
+GET {{host}}/healthz/ping
+
+### Readiness: 200 "ready", or 503 "not ready" while starting or stopping
+GET {{host}}/healthz/ready
+
+### Fails on purpose: 500 problem details, and an error log line with the exception
+GET {{host}}/healthz/error/500
+
+### Refuses on purpose: 403 problem details, and a warning log line
+GET {{host}}/healthz/error/403
+
+### Every note, oldest first
+GET {{host}}/api/notes
+
+### One note
+GET {{host}}/api/notes/1
+
+### Whether a note exists: 200 or 404, no body
+HEAD {{host}}/api/notes/1
+
+### The verbs /api/notes answers: 204 with an Allow header
+OPTIONS {{host}}/api/notes
+
+### Create a note: 201 with a Location header
+POST {{host}}/api/notes
+Content-Type: application/json
+
+{
+  "text": "Created from the .http file.",
+  "done": false
+}
+
+### Replace a note: both values are required
+PUT {{host}}/api/notes/1
+Content-Type: application/json
+
+{
+  "text": "Replaced from the .http file.",
+  "done": true
+}
+
+### Change a note: only the values given
+PATCH {{host}}/api/notes/1
+Content-Type: application/json
+
+{
+  "done": false
+}
+
+### Delete a note: 204, then 404 for a second delete or a GET
+DELETE {{host}}/api/notes/2
+
+### An invalid note: 400 problem details naming the field
+POST {{host}}/api/notes
+Content-Type: application/json
+
+{
+  "text": ""
+}

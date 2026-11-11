@@ -1,0 +1,9 @@
+# Keep the build context to what the image needs (docs/SDD.md section 10): no build output, no repository history,
+# no editor or agent settings.
+**/bin/
+**/obj/
+**/*.user
+.git/
+.vs/
+.vscode/
+.claude/

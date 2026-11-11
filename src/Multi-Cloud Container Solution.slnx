@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="MultiCloud.Adapter.Notes/MultiCloud.Adapter.Notes.csproj" />
+  <Project Path="MultiCloud.Adapter.Platform/MultiCloud.Adapter.Platform.csproj" />
+  <Project Path="MultiCloud.Application.Web/MultiCloud.Application.Web.csproj" />
+  <Project Path="MultiCloud.Orchestrator.Heartbeat/MultiCloud.Orchestrator.Heartbeat.csproj" />
+  <Project Path="MultiCloud.Test.Unit/MultiCloud.Test.Unit.csproj" />
+</Solution>
