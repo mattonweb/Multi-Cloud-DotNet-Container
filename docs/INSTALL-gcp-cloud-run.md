@@ -257,6 +257,11 @@ account that may push images to the one repository, deploy revisions of the one 
 If the deploy's copy step is refused reading from `ghcr.io`, open the package's settings on GitHub, and under
 **Manage Actions access** give this repository read access.
 
+If Publish image's push is refused with `denied`, look under **Packages** on your GitHub profile. A package named
+`multi-cloud-dotnet-container` that is not linked to this repository, perhaps left by an earlier attempt, blocks the
+run's token: in its settings, under **Manage Actions access**, give this repository write access, or delete the package
+and run the workflow again.
+
 ## Tear down
 
 Delete the service, then the repository and every image in it.

@@ -444,9 +444,12 @@ turns out different is corrected here in the same change that discovers it.
 - Rows 2 and 3 of the platform table, in their cloud phases.
 - That forwarded headers are trusted from the proxy in front of the container on ECS and GKE, in their phases.
 - That Cloud Logging reads the `severity` and `message` of decision D8's lines, from the first image deployed with them.
-- That **Publish image** and **Deploy to Google Cloud Run** run as written (section 16). Neither has run yet; their
-  shell steps pass `bash -n`, and the copy that keeps the digest (`docker buildx imagetools create
-  --prefer-index=false`) is checked by the workflow itself.
+- That **Publish image** and **Deploy to Google Cloud Run** run as written (section 16). The copy that keeps the
+  digest (`docker buildx imagetools create --prefer-index=false`) is checked by the deploy workflow itself. Publish
+  image's first run, on 2026-11-11, built and tested the solution and the image, then `ghcr.io` refused the push with
+  `denied`: the runner's Docker (Ubuntu 26.04) adds a provenance attestation by default, which turns the push into a
+  manifest list, and `ghcr.io` reads the source label that links a new package to its repository from the image
+  itself. The workflow now builds one image manifest, with no attestation; it has not run since.
 
 ## 15. Decisions
 

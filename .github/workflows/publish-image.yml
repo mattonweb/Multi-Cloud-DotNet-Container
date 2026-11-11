@@ -62,8 +62,11 @@ jobs:
           IMAGE: ${{ steps.name.outputs.image }}
           TAG: ${{ steps.name.outputs.tag }}
         run: |
+          # One image manifest, with no provenance or SBOM attestation beside it. The runner's Docker adds an
+          # attestation by default, which turns the push into a manifest list, and ghcr.io then cannot read the source
+          # label below to link a new package to this repository; it refused the first run's push with "denied".
           # The source label links the package on ghcr.io to this repository, so the deploy workflows here can read it.
-          docker build --platform linux/amd64 \
+          docker build --platform linux/amd64 --provenance=false --sbom=false \
             --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --label "org.opencontainers.image.version=$TAG" \
