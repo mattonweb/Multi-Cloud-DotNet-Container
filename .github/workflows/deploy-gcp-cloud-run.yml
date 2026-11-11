@@ -1,0 +1,135 @@
+# Deploy to Google Cloud Run: copy a published image, by digest, from GitHub Container Registry into Artifact
+# Registry, deploy that digest to the existing Cloud Run service, and check the new revision answers. These are the
+# steps in docs/INSTALL-gcp-cloud-run.md, automated (docs/SDD.md section 16, decision D9).
+#
+# Started only by hand (workflow_dispatch), with the tag the publish workflow gave the image. It signs in to Google
+# through Workload Identity Federation, so no Google key is stored anywhere. The project ID and number are repository
+# secrets rather than variables, so GitHub masks them in this public repository's run logs.
+
+name: Deploy to Google Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The published image's tag, such as 2026.1111.1, from a run of Publish image.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+concurrency:
+  group: deploy-gcp-cloud-run
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      IMAGE_NAME: multi-cloud-dotnet-container
+      REGION: us-central1
+      REPOSITORY: multi-cloud
+      SERVICE: multi-cloud
+      SERVICE_ACCOUNT_NAME: github-deployer
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check the tag and name the published image
+        id: name
+        run: |
+          if [[ ! "$TAG" =~ ^[0-9]{4}\.[0-9]{4}\.[0-9]+$ ]]; then
+            echo "The tag '$TAG' is not <YYYY.MMdd>.<run number>, the form Publish image gives." >&2
+            exit 1
+          fi
+          if [ -z "$PROJECT_ID" ]; then
+            echo "The repository secret GCP_PROJECT_ID is not set; docs/INSTALL-gcp-cloud-run.md says how." >&2
+            exit 1
+          fi
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "source=ghcr.io/$owner/$IMAGE_NAME:$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to Google
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ${{ env.SERVICE_ACCOUNT_NAME }}@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Copy the image into Artifact Registry
+        id: copy
+        env:
+          SOURCE: ${{ steps.name.outputs.source }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          # The target holds the project ID, a secret, so each step builds it rather than passing it as an output.
+          TARGET="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME"
+          echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          source_digest="$(docker buildx imagetools inspect --raw "$SOURCE" | sha256sum | cut -d ' ' -f 1)"
+
+          # A carbon copy, registry to registry: the manifest is copied as it is, so the digest does not change.
+          docker buildx imagetools create --prefer-index=false --tag "$TARGET:$TAG" "$SOURCE"
+          target_digest="$(docker buildx imagetools inspect --raw "$TARGET:$TAG" | sha256sum | cut -d ' ' -f 1)"
+          if [ "$source_digest" != "$target_digest" ]; then
+            echo "The copy's digest sha256:$target_digest differs from the published sha256:$source_digest." >&2
+            exit 1
+          fi
+          echo "digest=sha256:$source_digest" >> "$GITHUB_OUTPUT"
+          echo "Copied $TAG to Artifact Registry, digest sha256:$source_digest"
+          docker logout ghcr.io
+
+      - name: Deploy the digest
+        id: deploy
+        env:
+          DIGEST: ${{ steps.copy.outputs.digest }}
+        run: |
+          TARGET="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME"
+
+          # Only the image changes; the service keeps its settings, its environment variables and its public access.
+          gcloud run deploy "$SERVICE" --image "$TARGET@$DIGEST" --region "$REGION" --project "$PROJECT_ID" --quiet
+          revision="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.latestReadyRevisionName)')"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "Deployed $TAG as revision $revision"
+
+      - name: Check the new revision
+        id: check
+        env:
+          REVISION: ${{ steps.deploy.outputs.revision }}
+        run: |
+          URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
+          ping="$(curl --silent --show-error --fail "$URL/healthz/ping")"
+          if [ "$ping" != "up" ]; then
+            echo "/healthz/ping answered '$ping', not 'up'." >&2
+            exit 1
+          fi
+          root="$(curl --silent --show-error --fail "$URL/")"
+          platform="$(echo "$root" | jq -r '.platform.name')"
+          answered="$(echo "$root" | jq -r '.platform.revision')"
+          echo "The root route answered platform '$platform', revision '$answered'."
+          if [ "$platform" != "Google Cloud Run" ]; then
+            echo "The platform should be 'Google Cloud Run'." >&2
+            exit 1
+          fi
+          if [ "$answered" != "$REVISION" ]; then
+            echo "The answer came from revision '$answered', not the new revision '$REVISION'." >&2
+            exit 1
+          fi
+
+      - name: Write summary
+        if: always()
+        env:
+          DIGEST: ${{ steps.copy.outputs.digest }}
+          REVISION: ${{ steps.deploy.outputs.revision }}
+          COPY_OUTCOME: ${{ steps.copy.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          echo "Deploy \`$TAG\` to Google Cloud Run: copy ${COPY_OUTCOME:-skipped}, deploy ${DEPLOY_OUTCOME:-skipped}, check ${CHECK_OUTCOME:-skipped}." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$DIGEST" ]; then echo "Digest: \`$DIGEST\`." >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -n "$REVISION" ]; then echo "Revision: \`$REVISION\`." >> "$GITHUB_STEP_SUMMARY"; fi

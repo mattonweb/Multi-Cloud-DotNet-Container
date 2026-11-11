@@ -165,9 +165,101 @@ URL=$(gcloud run services describe multi-cloud --region us-central1 --format='va
    gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="multi-cloud" AND jsonPayload.HeartbeatKind:*' --limit 30 --format='table(timestamp, labels.instanceId, jsonPayload.HeartbeatKind, jsonPayload.HeartbeatSequence)'
    ```
 
+## Publish and deploy with GitHub Actions
+
+Two workflows automate the steps above, and each runs only when you start it from the repository's **Actions** tab
+([SDD.md](SDD.md) section 16). **Publish image** builds and tests the solution, builds the image once, and pushes it to
+GitHub Container Registry (`ghcr.io`) under a tag such as `2026.1111.1`. **Deploy to Google Cloud Run** copies that
+image, keeping its digest, into the Artifact Registry repository above, and deploys the digest to the `multi-cloud`
+service. The service must already exist, from the Run step above; the workflow changes only its image.
+
+### One-time setup
+
+GitHub signs in to Google through Workload Identity Federation: Google trusts GitHub's own short-lived token for this
+one repository's `main` branch, so no Google key is created or stored anywhere. The workflow then acts as a service
+account that may push images to the one repository, deploy revisions of the one service, and nothing else.
+
+1. **Put the project's ID and number in variables** for the commands below.
+
+   ```bash
+   PROJECT_ID=$(gcloud config get-value project)
+   ```
+
+   ```bash
+   PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+   ```
+
+2. **Turn on the services Google's side of the sign-in uses.**
+
+   ```bash
+   gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com
+   ```
+
+3. **Create the service account the workflow acts as.**
+
+   ```bash
+   gcloud iam service-accounts create github-deployer --display-name="GitHub Actions deployer"
+   ```
+
+4. **Give it its three permissions:** push images to the repository, deploy revisions of the service, and run them
+   as the identity the service runs as. Unless the service was given its own, that identity is the project's default
+   compute service account, which the third command names.
+
+   ```bash
+   gcloud artifacts repositories add-iam-policy-binding multi-cloud --location=us-central1 --member="serviceAccount:github-deployer@$PROJECT_ID.iam.gserviceaccount.com" --role=roles/artifactregistry.writer
+   ```
+
+   ```bash
+   gcloud run services add-iam-policy-binding multi-cloud --region=us-central1 --member="serviceAccount:github-deployer@$PROJECT_ID.iam.gserviceaccount.com" --role=roles/run.developer
+   ```
+
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding $PROJECT_NUMBER-compute@developer.gserviceaccount.com --member="serviceAccount:github-deployer@$PROJECT_ID.iam.gserviceaccount.com" --role=roles/iam.serviceAccountUser
+   ```
+
+5. **Create the identity pool and the GitHub provider.** The condition admits only this repository's `main` branch.
+
+   ```bash
+   gcloud iam workload-identity-pools create github --location=global --display-name="GitHub Actions"
+   ```
+
+   ```bash
+   gcloud iam workload-identity-pools providers create-oidc github --location=global --workload-identity-pool=github --display-name="GitHub" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" --attribute-condition="assertion.repository=='mattonweb/Multi-Cloud-DotNet-Container' && assertion.ref=='refs/heads/main'"
+   ```
+
+6. **Let this repository act as the service account.**
+
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding github-deployer@$PROJECT_ID.iam.gserviceaccount.com --role=roles/iam.workloadIdentityUser --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/mattonweb/Multi-Cloud-DotNet-Container"
+   ```
+
+7. **Give the workflow the project's ID and number, as secrets.** In the repository on GitHub, open **Settings**,
+   **Secrets and variables**, **Actions**, and add two repository secrets: `GCP_PROJECT_ID` and
+   `GCP_PROJECT_NUMBER`, with the values this prints. They are secrets rather than variables so that GitHub masks them
+   in the run logs, which a public repository shows to everyone.
+
+   ```bash
+   echo "GCP_PROJECT_ID=$PROJECT_ID GCP_PROJECT_NUMBER=$PROJECT_NUMBER"
+   ```
+
+### Run them
+
+1. **Publish.** In the **Actions** tab, choose **Publish image**, then **Run workflow** on `main`. It runs the build
+   and the unit tests first, then publishes. The run's summary names the tag and the digest, for example
+   `Deploy it by running a deploy workflow with tag 2026.1111.1`. The first run creates the package
+   `multi-cloud-dotnet-container` under your GitHub account, linked to this repository.
+2. **Deploy.** Choose **Deploy to Google Cloud Run**, then **Run workflow**, and enter the tag. It copies the image,
+   checks the copy has the same digest, deploys that digest, and checks that the new revision answers `up` and reports
+   "Google Cloud Run" and its own revision name. The summary names the digest and the revision.
+3. **Verify** as in the Verify section above. The image is the same bytes the publish run built: the digest in the
+   deploy's summary is the publish's digest.
+
+If the deploy's copy step is refused reading from `ghcr.io`, open the package's settings on GitHub, and under
+**Manage Actions access** give this repository read access.
+
 ## Tear down
 
-Delete the service, then the repository and every image in it. Nothing else was created.
+Delete the service, then the repository and every image in it.
 
 ```bash
 gcloud run services delete multi-cloud --region us-central1
@@ -175,6 +267,18 @@ gcloud run services delete multi-cloud --region us-central1
 
 ```bash
 gcloud artifacts repositories delete multi-cloud --location us-central1
+```
+
+If you set up GitHub Actions, also delete the identity pool, which Google keeps recoverable for 30 days, and the
+service account; then delete the two secrets in the repository's settings, and the package on GitHub if you no
+longer want the published images.
+
+```bash
+gcloud iam workload-identity-pools delete github --location=global
+```
+
+```bash
+gcloud iam service-accounts delete github-deployer@<your-project-id>.iam.gserviceaccount.com
 ```
 
 ## What is different here

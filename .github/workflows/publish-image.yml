@@ -1,0 +1,96 @@
+# Publish image: build and test the solution, build the container image ONCE, and publish it to GitHub Container
+# Registry under a release-style tag. Every deploy workflow copies this one image, by digest, into its own cloud's
+# registry, so every cloud runs the same bytes (docs/SDD.md section 16, decision D9).
+#
+# Started only by hand (workflow_dispatch). It needs no cloud credential: only the run's own GITHUB_TOKEN, to push
+# to ghcr.io. The tag is <YYYY.MMdd>.<run number>, the scheme of Signalbox's reusable build release.
+
+name: Publish image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-image
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: mattonweb/Signalbox/.github/workflows/reusable-pull-request-checks.yml@2026.1025.3
+    with:
+      solution-path: "src/Multi-Cloud Container Solution.slnx"
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.name.outputs.tag }}
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      IMAGE_NAME: multi-cloud-dotnet-container
+      TIME_ZONE: America/Chicago
+      RUN_NUMBER: ${{ github.run_number }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Name the image
+        id: name
+        run: |
+          tag="$(TZ="$TIME_ZONE" date +%Y.%m%d).$RUN_NUMBER"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/$owner/$IMAGE_NAME"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Image $image:$tag from $GITHUB_REF_NAME at $GITHUB_SHA (run $GITHUB_RUN_ID, number $RUN_NUMBER)"
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        id: build
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.name.outputs.tag }}
+        run: |
+          # The source label links the package on ghcr.io to this repository, so the deploy workflows here can read it.
+          docker build --platform linux/amd64 \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$TAG" \
+            --tag "$IMAGE:$TAG" .
+
+      - name: Push the image
+        id: push
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.name.outputs.tag }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$TAG"
+          digest="$(docker buildx imagetools inspect --raw "$IMAGE:$TAG" | sha256sum | cut -d ' ' -f 1)"
+          echo "digest=sha256:$digest" >> "$GITHUB_OUTPUT"
+          echo "Pushed $IMAGE:$TAG, digest sha256:$digest"
+          docker logout ghcr.io
+
+      - name: Write summary
+        if: always()
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.name.outputs.tag }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PUSH_OUTCOME: ${{ steps.push.outcome }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          echo "Publish image \`${IMAGE:-unnamed}:${TAG:-untagged}\` from \`$GITHUB_SHA\`: build ${BUILD_OUTCOME:-skipped}, push ${PUSH_OUTCOME:-skipped}." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$DIGEST" ]; then echo "Digest: \`$DIGEST\`. Deploy it by running a deploy workflow with tag \`$TAG\`." >> "$GITHUB_STEP_SUMMARY"; fi
