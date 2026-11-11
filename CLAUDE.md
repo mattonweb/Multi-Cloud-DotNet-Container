@@ -11,6 +11,8 @@
 - **2026-11-10 (attended session with Matt): the first build created the solution**, the `Dockerfile` and
   `docs/INSTALL-local.md`. The layout section below is now what exists, not a plan. `docs/SDD.md` section 14 says
   which unverified items the build confirmed and which still wait on the container.
+- **2026-11-10 (attended session with Matt): no views; the application is a JSON API** (`docs/SDD.md`, decision
+  D7). `GET /` answers JSON, and the Stack section below says controllers without views.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -63,7 +65,8 @@ from it.
 ## Stack
 
 - .NET 10 SDK (10.0.x is installed on this machine) and C# 14, the versions the house C# skill is written for.
-- ASP.NET Core MVC: controllers with views. No Razor Pages, no Blazor, no minimal-API endpoints.
+- ASP.NET Core MVC: controllers without views, a JSON API that returns no HTML page. Errors are Problem Details
+  (RFC 9457). No views, no Razor Pages, no Blazor, no minimal-API endpoints.
 - Logging through `ILogger<T>`, with Serilog as the provider writing one JSON object per line to the console.
 - Entity Framework Core over an in-memory SQLite database, created and seeded when the application starts.
 - Tests: MSTest, written as the `code-csharp-mstest` skill describes.
@@ -92,7 +95,7 @@ src/
 
 Inside each class library, only `Configuration/`, `Contracts/` and `ServiceCollectionExtensions` are public; data
 types that stay inside are under `DTOs/` or `Entities/`, behavior under `Services/` or `Data/`. The web application
-keeps its public data types (the view model, the JSON bodies, the session) under `Models/`, the MVC convention, and
+keeps its public data types (the JSON resources and bodies, the session) under `Models/`, the MVC convention, and
 groups its behavior by concern: `Controllers/`, `Hosting/`, `Errors/`, `Logging/`, `Json/`, `Mapping/`.
 `MultiCloud.Application.Web.http` holds one request for every route.
 
