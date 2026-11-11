@@ -29,7 +29,7 @@ defect in the design, and is raised before it is made.
 | Phase | Deliverable | State |
 |---|---|---|
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
-| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | Later; not designed here |
+| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand on 2026-11-11; not designed here |
 | 3 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
 | 4 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Later; not designed here |
 
@@ -250,6 +250,21 @@ operating system description. The session, version, environment and platform val
 - **One sink by default: the console, one JSON object per line.** Every target platform collects standard output.
   Sending logs to Splunk or anywhere else is a platform setting in a later phase, or a Serilog sink added through
   configuration; no log system's package is referenced in phase 1.
+
+> **Open decision D8, for Matt, found by the first Cloud Run deploy.** Cloud Logging receives every line, but none of
+> the application's lines carries a severity: its errors and warnings arrive as plain entries, so a severity filter or
+> an alert on errors misses them. Cloud Logging reads a JSON line's level from a field named `severity`, and
+> `RenderedCompactJsonFormatter` writes it as `@l`, and leaves it out for Information. The choice:
+>
+> - **Write a `severity` field on every line, in every environment.** A Serilog.Expressions template, chosen in the
+>   `Serilog` configuration section, writes the same JSON with `severity` (`DEBUG`, `INFO`, `WARNING`, `ERROR`,
+>   `CRITICAL`) and the rendered message as `message`, which Cloud Logging also shows as the entry's summary. One new
+>   package and a configuration change, no code; the local checks that read `@l` change with it.
+> - **Leave the lines as they are.** Cloud Logging can still filter on `jsonPayload."@l"`, but its severity filters,
+>   its colours and its error alerts see nothing.
+>
+> A Google-specific formatter package is not an option: the design references no log system's package, and the code
+> must not know which cloud it is in.
 - **Serilog is configured from configuration** (`Serilog` section), so a level or a sink changes without a code
   change.
 - **A bootstrap logger** exists before the host is built, so a failure during startup is logged. The log is flushed
@@ -409,10 +424,22 @@ turns out different is corrected here in the same change that discovers it.
   port forward, the answers went from 200 straight to refused connections; `docker stop` took 1.3 seconds and the
   `Stopping` heartbeat was written. A platform's probe sees the instance go away either way (decision D5).
 
+**Confirmed on Google Cloud Run, 2026-11-11:**
+
+- **Row 1 of the platform table.** Cloud Run sets `K_SERVICE` and `K_REVISION`; the root route reported "Google Cloud
+  Run", `gcp`, `gcp_cloud_run`, the service and the revision, and no region or instance, as the table says.
+- **Forwarded headers are trusted behind Google's front end.** The root route reported the scheme as `https`, though
+  the container speaks plain HTTP, and the caller's public address as the remote address.
+- **`PORT` works**: Cloud Run sets it and the application listened on it.
+- **Google's front end passes the application's error bodies through**: 500, 403 and 404 arrived as
+  `application/problem+json` with `X-Session-Id`.
+
 **Still to confirm:**
 
-- Rows 1 to 3 of the platform table, each in its cloud phase.
-- That forwarded headers are trusted from the proxy in front of the container on each target platform, in its phase.
+- Rows 2 and 3 of the platform table, in their cloud phases.
+- That forwarded headers are trusted from the proxy in front of the container on ECS and GKE, in their phases.
+- On Cloud Run, whether the heartbeat keeps time over a long idle stretch while CPU is given only during requests (it
+  did over two minutes), and whether an instance Cloud Run stops writes its `Stopping` line.
 
 ## 15. Decisions
 

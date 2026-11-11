@@ -21,7 +21,7 @@ correctly before a real application goes there:
 | Phase | What | State |
 |---|---|---|
 | 1 | The application, the `Dockerfile`, and running it locally | Built; [docs/INSTALL-local.md](docs/INSTALL-local.md) |
-| 2 | Google Cloud Run | Not started |
+| 2 | Google Cloud Run | In progress: deployed by hand; [docs/INSTALL-gcp-cloud-run.md](docs/INSTALL-gcp-cloud-run.md) |
 | 3 | AWS ECS on Fargate | Not started |
 | 4 | Google Kubernetes Engine | Not started |
 
