@@ -154,8 +154,10 @@ URL=$(gcloud run services describe multi-cloud --region us-central1 --format='va
    Cloud Logging reads a line's level from a `severity` field, and the application writes it as `@l`. This is open
    decision D8 in [SDD.md](SDD.md) section 7.
 
-6. **Heartbeats.** Expect `Running` lines one minute apart, numbered in sequence, even while no request is in
-   progress. On the first run they kept time over two idle minutes.
+6. **Heartbeats, and the end of an idle instance.** Expect `Running` lines one minute apart, numbered in sequence
+   with no gap, even while no request is in progress. About 15 minutes after the last request, Cloud Run stops the
+   idle instance; expect its last line to be `Stopping`, with the next number. On the first run, one instance wrote
+   `Running` 1 to 17 and `Stopping` 18.
 
    ```bash
    gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="multi-cloud" AND jsonPayload.HeartbeatKind:*' --limit 30 --format='table(timestamp, labels.instanceId, jsonPayload.HeartbeatKind, jsonPayload.HeartbeatSequence)'
@@ -184,7 +186,8 @@ gcloud artifacts repositories delete multi-cloud --location us-central1
 - **The port** comes from `PORT`, which Cloud Run sets.
 - **The logs** go to Cloud Logging, where each JSON line becomes the entry's `jsonPayload`. They carry no severity yet
   (decision D8).
-- **Instances come and go.** Cloud Run may run several at once, each with its own notes and session, and stops an idle
-  one. By default an instance has CPU only while a request is in progress; whether the heartbeat keeps time over a long
-  idle stretch, and whether a stopped instance writes its `Stopping` line, is still being observed.
+- **Instances come and go.** Cloud Run may run several at once, each with its own notes and session. It stops an
+  instance about 15 minutes after its last request, with a polite stop signal, so the instance writes its `Stopping`
+  heartbeat; the next request starts a new session. By default an instance has CPU only while a request is in
+  progress, and the heartbeat kept time through the idle minutes all the same.
 - **The service is public**, through `--allow-unauthenticated`.

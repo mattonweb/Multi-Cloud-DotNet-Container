@@ -433,13 +433,16 @@ turns out different is corrected here in the same change that discovers it.
 - **`PORT` works**: Cloud Run sets it and the application listened on it.
 - **Google's front end passes the application's error bodies through**: 500, 403 and 404 arrived as
   `application/problem+json` with `X-Session-Id`.
+- **The heartbeat keeps time while idle, with CPU given only during requests** (Cloud Run's default). One instance
+  wrote `Running` 1 to 17 a minute apart, with no gap, though no request arrived after its first three minutes.
+- **An instance Cloud Run stops writes its `Stopping` line.** About 15 minutes after its last request, Cloud Run
+  stopped the idle instance, and its last line was `Stopping` with the next number: Cloud Run sends a polite stop
+  signal, and the 8-second shutdown timeout is long enough.
 
 **Still to confirm:**
 
 - Rows 2 and 3 of the platform table, in their cloud phases.
 - That forwarded headers are trusted from the proxy in front of the container on ECS and GKE, in their phases.
-- On Cloud Run, whether the heartbeat keeps time over a long idle stretch while CPU is given only during requests (it
-  did over two minutes), and whether an instance Cloud Run stops writes its `Stopping` line.
 
 ## 15. Decisions
 
