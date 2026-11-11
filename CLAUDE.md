@@ -17,6 +17,8 @@
   section 16, decision D9). The working agreement and the layout below now say so.
 - **2026-11-11 (attended session with Matt): phase 3 is Google Kubernetes Engine, before AWS** (`docs/SDD.md`
   section 17, decision D10). The layout below adds `deploy/gke/`, and the scope list adds `deploy`.
+- **2026-11-11 (attended session with Matt): phase 4 is AWS ECS on Fargate behind a load balancer** (`docs/SDD.md`
+  section 18, decision D12). The layout below adds `deploy/aws-ecs/`, which the `deploy` scope covers.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -88,6 +90,7 @@ Dockerfile                                 the one image definition
   deploy-<cloud>.yml                       one per cloud: copies the image by digest, deploys it; started by hand
 deploy/
   gke/                                     Kubernetes manifests for GKE; the image is filled in when applied
+  aws-ecs/                                 the ECS task definition; the image and the role are filled in when applied
 docs/
   SDD.md                                   the solution design
   INSTALL-local.md                         run it with dotnet, run it with Docker
@@ -132,7 +135,8 @@ background heartbeat), `data` (the Notes database), `tests` (the unit tests), `c
 `.dockerignore`), `deps` (package and base-image updates), `docs` (`README.md`, the design and the install files),
 `skills` (the junctions and their gitignore lines), `charter` (this file). A scope that is not here is added to this
 list in its own commit before the commit that uses it; never invented in the message. A change to the workflows is
-type `ci` with no scope; a change to the Kubernetes manifests alone takes the scope `deploy` (`deploy/`).
+type `ci` with no scope; a change to the platform files in `deploy/` alone, the Kubernetes manifests or the ECS task
+definition, takes the scope `deploy`.
 
 **The 500-line ceiling (`code-csharp-standards` section 8): the named-exception list for this repository is
 EMPTY**, and the repository starts with no files over it. A file that needs to exceed the ceiling gets its entry
