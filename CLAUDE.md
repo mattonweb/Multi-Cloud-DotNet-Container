@@ -15,6 +15,8 @@
   D7). `GET /` answers JSON, and the Stack section below says controllers without views.
 - **2026-11-11 (attended session with Matt): GitHub Actions workflows, started only by hand** (`docs/SDD.md`
   section 16, decision D9). The working agreement and the layout below now say so.
+- **2026-11-11 (attended session with Matt): phase 3 is Google Kubernetes Engine, before AWS** (`docs/SDD.md`
+  section 17, decision D10). The layout below adds `deploy/gke/`, and the scope list adds `deploy`.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -84,6 +86,8 @@ Dockerfile                                 the one image definition
 .github/workflows/
   publish-image.yml                        builds the image once, publishes it to ghcr.io; started by hand
   deploy-<cloud>.yml                       one per cloud: copies the image by digest, deploys it; started by hand
+deploy/
+  gke/                                     Kubernetes manifests for GKE; the image is filled in when applied
 docs/
   SDD.md                                   the solution design
   INSTALL-local.md                         run it with dotnet, run it with Docker
@@ -128,7 +132,7 @@ background heartbeat), `data` (the Notes database), `tests` (the unit tests), `c
 `.dockerignore`), `deps` (package and base-image updates), `docs` (`README.md`, the design and the install files),
 `skills` (the junctions and their gitignore lines), `charter` (this file). A scope that is not here is added to this
 list in its own commit before the commit that uses it; never invented in the message. A change to the workflows is
-type `ci` with no scope.
+type `ci` with no scope; a change to the Kubernetes manifests alone takes the scope `deploy` (`deploy/`).
 
 **The 500-line ceiling (`code-csharp-standards` section 8): the named-exception list for this repository is
 EMPTY**, and the repository starts with no files over it. A file that needs to exceed the ceiling gets its entry
