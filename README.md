@@ -104,8 +104,8 @@ Each has its default in `appsettings.json` and is overridden by an environment v
 - **.NET 10** and **C# 14**, built with the .NET SDK 10.0.402 on the development machine.
 - **ASP.NET Core MVC**, controllers without views: every answer is JSON, an error as Problem Details (RFC 9457),
   except the two probes' plain text.
-- **Serilog**, writing one JSON object per line to the console, with OpenTelemetry's names for the session and
-  platform properties on every line.
+- **Serilog**, writing one JSON object per line to the console: `time`, a `severity` a log system can read, the
+  rendered `message`, and OpenTelemetry's names for the session and platform properties on every line.
 - **Entity Framework Core over SQLite, in memory.** Nothing is written to disk; a restart empties it.
 - **MSTest** for the tests.
 
@@ -115,7 +115,8 @@ Every package and base image is pinned to one exact version:
 |---|---|---|
 | `mcr.microsoft.com/dotnet/sdk` | `10.0.403-noble` | The image's build stage |
 | `mcr.microsoft.com/dotnet/aspnet` | `10.0.14-noble` | The image's run stage |
-| `Serilog.AspNetCore` | 10.0.0 | `MultiCloud.Application.Web`; brings Serilog 4.3.0, Serilog.Settings.Configuration 10.0.0, Serilog.Sinks.Console 6.1.1 and Serilog.Formatting.Compact 3.0.0 |
+| `Serilog.AspNetCore` | 10.0.0 | `MultiCloud.Application.Web`; brings Serilog 4.3.0, Serilog.Settings.Configuration 10.0.0 and Serilog.Sinks.Console 6.1.1 |
+| `Serilog.Expressions` | 5.0.0 | `MultiCloud.Application.Web`, for the JSON template every log line is written with |
 | `Microsoft.EntityFrameworkCore.Sqlite` | 10.0.14 | `MultiCloud.Adapter.Notes` |
 | `Microsoft.Extensions.DependencyInjection.Abstractions` | 10.0.14 | `MultiCloud.Adapter.Platform` |
 | `Microsoft.Extensions.Hosting.Abstractions` | 10.0.14 | `MultiCloud.Orchestrator.Heartbeat` |

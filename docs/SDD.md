@@ -251,20 +251,19 @@ operating system description. The session, version, environment and platform val
   Sending logs to Splunk or anywhere else is a platform setting in a later phase, or a Serilog sink added through
   configuration; no log system's package is referenced in phase 1.
 
-> **Open decision D8, for Matt, found by the first Cloud Run deploy.** Cloud Logging receives every line, but none of
-> the application's lines carries a severity: its errors and warnings arrive as plain entries, so a severity filter or
-> an alert on errors misses them. Cloud Logging reads a JSON line's level from a field named `severity`, and
-> `RenderedCompactJsonFormatter` writes it as `@l`, and leaves it out for Information. The choice:
->
-> - **Write a `severity` field on every line, in every environment.** A Serilog.Expressions template, chosen in the
->   `Serilog` configuration section, writes the same JSON with `severity` (`DEBUG`, `INFO`, `WARNING`, `ERROR`,
->   `CRITICAL`) and the rendered message as `message`, which Cloud Logging also shows as the entry's summary. One new
->   package and a configuration change, no code; the local checks that read `@l` change with it.
-> - **Leave the lines as they are.** Cloud Logging can still filter on `jsonPayload."@l"`, but its severity filters,
->   its colours and its error alerts see nothing.
->
-> A Google-specific formatter package is not an option: the design references no log system's package, and the code
-> must not know which cloud it is in.
+- **Every line carries a `severity` a log system can read** (decision D8). One line is one JSON object: `time`,
+  `severity` (`DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, from Serilog's Verbose and Debug, Information,
+  Warning, Error and Fatal), the rendered `message`, and, when they exist, the `exception`, `traceId` and `spanId`;
+  then every property of the event. The names are generic, so no log system is named in the code; Cloud Logging, among
+  others, reads `severity` and shows `message` as the entry's summary.
+
+> **Decision D8 (section 15), found by the first Cloud Run deploy.** Cloud Logging received every line, but none
+> carried a severity: `RenderedCompactJsonFormatter` writes the level as `@l` and leaves it out for Information, and
+> Cloud Logging reads it from `severity`, so a severity filter or an alert on errors missed the application's errors.
+> The shape above is a Serilog.Expressions template, written once in `Logging/JsonLogFormat.cs` so it can be tested.
+> The `Serilog` configuration section names it for the console, and the bootstrap logger uses it too, so a failure
+> while starting is `CRITICAL` with its exception. A Google-specific formatter package was not an option: the design
+> references no log system's package, and the code must not know which cloud it is in.
 - **Serilog is configured from configuration** (`Serilog` section), so a level or a sink changes without a code
   change.
 - **A bootstrap logger** exists before the host is built, so a failure during startup is logged. The log is flushed
@@ -402,7 +401,7 @@ turns out different is corrected here in the same change that discovers it.
 
 **Confirmed by the first build, 2026-11-10:**
 
-- **Serilog accepts dotted property names from an enricher** and `RenderedCompactJsonFormatter` writes them as plain
+- **Serilog accepts dotted property names from an enricher** and the JSON formatter writes them as plain
   top-level JSON keys, such as `"service.instance.id":"…"`.
 - **The OpenTelemetry names and values exist** in the semantic conventions registry (`open-telemetry/semantic-conventions`,
   `model/`, main branch): `service.name`, `service.version`, `service.instance.id` and `deployment.environment.name` are
@@ -443,11 +442,12 @@ turns out different is corrected here in the same change that discovers it.
 
 - Rows 2 and 3 of the platform table, in their cloud phases.
 - That forwarded headers are trusted from the proxy in front of the container on ECS and GKE, in their phases.
+- That Cloud Logging reads the `severity` and `message` of decision D8's lines, from the first image deployed with them.
 
 ## 15. Decisions
 
-Decided by Matt on 2026-11-10: D1 to D5 taking the recommendations from the first review of this design, D6 and D7
-after the first container run. Each one is provisional: the cloud phases deploy the image for real, and a decision that does not survive that is changed here in
+Decided by Matt: on 2026-11-10, D1 to D5 taking the recommendations from the first review of this design, and D6 and
+D7 after the first container run; on 2026-11-11, D8 after the first Cloud Run deploy. Each one is provisional: the cloud phases deploy the image for real, and a decision that does not survive that is changed here in
 the same change that finds it.
 
 | # | Decision | Applied in |
@@ -459,3 +459,4 @@ the same change that finds it.
 | D5 | `/healthz/ready` answers 503 once stopping begins, and no delay is added in code; a longer drain is a platform setting, decided per platform | Section 4.3 |
 | D6 | Withdrawn by D7. The data protection log category was to be set to `Error` in `appsettings.json`, to quiet the two startup warnings of a key nothing used; without views no key is created | Section 4.4 |
 | D7 | No views: the application is a JSON API and returns no HTML page. `GET /` answers JSON; MVC is registered without views, which also removes data protection | Sections 4, 4.2, 4.4 |
+| D8 | Every log line carries `severity` and `message`: one Serilog.Expressions template, in code so it is tested, named by configuration and used by the bootstrap logger. Decided after the first Cloud Run deploy | Section 7 |

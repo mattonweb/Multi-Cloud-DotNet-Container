@@ -28,7 +28,6 @@ using Serilog;
 using Serilog.AspNetCore;
 using Serilog.Core;
 using Serilog.Extensions.Hosting;
-using Serilog.Formatting.Compact;
 
 /// <summary>
 /// The application's entry point and composition root: it starts the session, reads the settings, registers every
@@ -75,13 +74,14 @@ public static class Program
     }
 
     /// <summary>
-    /// Creates the logger used until the host's logging is configured: the console, one JSON object per line.
+    /// Creates the logger used until the host's logging is configured: the console, one JSON object per line, in the
+    /// same shape as every later line.
     /// </summary>
     /// <returns>The bootstrap logger, which the host's configuration replaces.</returns>
     private static ReloadableLogger CreateBootstrapLogger()
     {
         LoggerConfiguration configuration = new LoggerConfiguration();
-        configuration.WriteTo.Console(new RenderedCompactJsonFormatter());
+        configuration.WriteTo.Console(JsonLogFormat.Formatter);
         return configuration.CreateBootstrapLogger();
     }
 

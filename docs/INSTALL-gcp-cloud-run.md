@@ -150,9 +150,11 @@ URL=$(gcloud run services describe multi-cloud --region us-central1 --format='va
    gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="multi-cloud"' --limit 25 --format='table(timestamp, severity, jsonPayload.SourceContext, jsonPayload.HeartbeatKind, jsonPayload.HeartbeatSequence, jsonPayload.StatusCode)'
    ```
 
-   **Known on 2026-11-11:** the application's lines arrive, but with no severity, its errors and warnings included;
-   Cloud Logging reads a line's level from a `severity` field, and the application writes it as `@l`. This is open
-   decision D8 in [SDD.md](SDD.md) section 7.
+   Expect every line of the application's to carry a severity: `INFO` for the heartbeats and most requests, `ERROR`
+   for the 500 with its exception, `WARNING` for the 403. Each line writes its level as `severity`, which Cloud
+   Logging reads, and its message as `message`, which Cloud Logging shows as the entry's summary
+   ([SDD.md](SDD.md) section 7, decision D8). An image built before decision D8 writes `@l` instead, and its lines
+   arrive with no severity: that was the first deploy's result, on 2026-11-11.
 
 6. **Heartbeats, and the end of an idle instance.** Expect `Running` lines one minute apart, numbered in sequence
    with no gap, even while no request is in progress. About 15 minutes after the last request, Cloud Run stops the
@@ -184,8 +186,8 @@ gcloud artifacts repositories delete multi-cloud --location us-central1
   plain HTTP on port 8080, with `X-Forwarded-Proto` and `X-Forwarded-For`, which the image honors. The front end also
   adds an `x-cloud-trace-context` header to each response.
 - **The port** comes from `PORT`, which Cloud Run sets.
-- **The logs** go to Cloud Logging, where each JSON line becomes the entry's `jsonPayload`. They carry no severity yet
-  (decision D8).
+- **The logs** go to Cloud Logging, where each JSON line becomes the entry's `jsonPayload`, its `severity` the entry's
+  severity and its `message` the entry's summary (decision D8). Cloud Run adds its own request log beside them.
 - **Instances come and go.** Cloud Run may run several at once, each with its own notes and session. It stops an
   instance about 15 minutes after its last request, with a polite stop signal, so the instance writes its `Stopping`
   heartbeat; the next request starts a new session. By default an instance has CPU only while a request is in

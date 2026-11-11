@@ -108,7 +108,8 @@ BASE=http://localhost:8080
    ```
 
 4. **The session, the heartbeat and the header are one run.** The first heartbeat is one JSON object whose
-   `HeartbeatKind` is `Started`, and its `service.instance.id` equals the `X-Session-Id` header from step 2.
+   `HeartbeatKind` is `Started`, and its `service.instance.id` equals the `X-Session-Id` header from step 2. Like
+   every line, it starts with `time`, `severity` (`INFO` here) and the rendered `message`.
 
    ```bash
    docker logs multi-cloud | grep '"HeartbeatKind":"Started"'
@@ -147,7 +148,7 @@ BASE=http://localhost:8080
    ```
 
    ```bash
-   docker logs multi-cloud | grep -E '"@l":"(Error|Warning)"'
+   docker logs multi-cloud | grep -E '"severity":"(ERROR|WARNING)"'
    ```
 
 8. **The error routes turned off.** Restart with the setting off. Expect `404` for both and no error or warning log
@@ -206,7 +207,7 @@ BASE=http://localhost:8080
     `/healthz/ready`.
 
     ```bash
-    docker logs multi-cloud | grep '"@m":"HTTP '
+    docker logs multi-cloud | grep '"message":"HTTP '
     ```
 
 11. **Where it thinks it is running.** The root route answers JSON, never HTML. Expect `platform.name` to be
