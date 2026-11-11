@@ -75,6 +75,7 @@ environment variable, with `__` standing for `:`. None is a secret.
 | `Heartbeat__WaitInSeconds` | `600` | Seconds between `Running` heartbeats; 1 or more |
 | `Diagnostics__ErrorRoutesEnabled` | `true` | Whether the two error routes throw, or answer 404 |
 | `Host__ShutdownTimeoutInSeconds` | `8` | How long the host waits for work to finish on shutdown |
+| `ForwardedHeaders__ForwardLimit` | `1` | How many entries of `X-Forwarded-For`, counted from the right, to trust: one per proxy in front; 1 or more |
 | `Notes__DatabaseName` | `Notes` | Name of the in-memory database |
 | `Serilog__MinimumLevel__Default` | `Information` | The lowest log level written; any `Serilog` setting works the same way |
 | `PORT` | not set | The port to listen on, when a platform says which |

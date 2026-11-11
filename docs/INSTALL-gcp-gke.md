@@ -1,8 +1,8 @@
 # Install: Google Kubernetes Engine
 
 Runs the published image, unchanged, on Google Kubernetes Engine (GKE): an Autopilot cluster, the manifests in
-`deploy/gke/`, and Google's HTTP load balancer in front ([SDD.md](SDD.md) section 17). Deployed by hand; a deploy
-workflow follows once these steps pass.
+`deploy/gke/`, and Google's HTTP load balancer in front ([SDD.md](SDD.md) section 17). Deployed by hand, or by the
+GitHub Actions workflow at the end, which runs the same steps.
 
 Wherever a real value goes, these steps show a placeholder: `<your-project-id>` for the project. It does not belong in
 this repository.
@@ -51,7 +51,7 @@ pages for current figures, and tear it down when the checks are done.
 ## Build
 
 Nothing is built here: GKE runs an image already in Artifact Registry, the same bytes Publish image built. Name it, by
-the tag it was published under:
+the tag it was published under; `2026.1111.2` below is an example, so use the newest tag you have:
 
 ```bash
 IMAGE=us-central1-docker.pkg.dev/$(gcloud config get-value project)/multi-cloud/multi-cloud-dotnet-container:2026.1111.2
@@ -99,8 +99,10 @@ Every check uses `$IP`, set by Run step 3.
 1. **Where it thinks it is running.** Expect `platform.name` "Kubernetes", `instance` the pod's name, and
    `cloudProvider` and `cloudPlatform` `null`: a cluster announces itself the same way whoever runs it, so the
    application cannot tell GKE from any other Kubernetes ([SDD.md](SDD.md) section 5). `request.scheme` is `http`.
-   `request.remoteAddress` should be your public address, if the forwarded headers from Google's load balancer are
-   honored; if it is the load balancer's own address, say so, because that is a finding.
+   `request.remoteAddress` should be your public address, here Cloud Shell's. Google's load balancer appends two
+   entries to `X-Forwarded-For`, your address and then its own, and the deployment sets
+   `ForwardedHeaders__ForwardLimit` to 2 to trust both ([SDD.md](SDD.md) decision D11). If it shows the load
+   balancer's own address, the same as `$IP`, the image predates that setting: deploy a newer one.
 
    ```bash
    curl -s http://$IP/
@@ -161,6 +163,40 @@ Every check uses `$IP`, set by Run step 3.
    gcloud logging read 'resource.type="k8s_container" AND resource.labels.namespace_name="multi-cloud" AND jsonPayload.HeartbeatKind:*' --limit 10 --format='table(timestamp, resource.labels.pod_name, jsonPayload.HeartbeatKind, jsonPayload.HeartbeatSequence)'
    ```
 
+## Deploy with GitHub Actions
+
+**Deploy to Google Kubernetes Engine** automates the Run steps above, and runs only when you start it from the
+repository's **Actions** tab ([SDD.md](SDD.md) section 16). It copies a published image, keeping its digest, into
+Artifact Registry, applies the manifests in `deploy/gke/` with that digest, waits for the rollout, and checks through
+the load balancer that a new pod answers. The cluster must already exist, from the One-time setup above; the workflow
+creates the namespace, deployment, service and Ingress if they are missing.
+
+### One-time setup
+
+The workflow signs in exactly as **Deploy to Google Cloud Run** does, so first finish the one-time setup under
+"Publish and deploy with GitHub Actions" in [INSTALL-gcp-cloud-run.md](INSTALL-gcp-cloud-run.md): the
+`github-deployer` service account, the identity pool and the two repository secrets. Then give the service account
+one more role, which lets it change Kubernetes objects in the project's clusters, here only `multi-cloud`:
+
+```bash
+PROJECT_ID=$(gcloud config get-value project)
+```
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:github-deployer@$PROJECT_ID.iam.gserviceaccount.com" --role=roles/container.developer --condition=None
+```
+
+### Run it
+
+1. **Publish**, if the image you want is not on `ghcr.io` yet: **Publish image**, then **Run workflow** on `main`.
+2. **Deploy.** Choose **Deploy to Google Kubernetes Engine**, then **Run workflow**. Leave the tag blank to deploy the
+   newest image Publish image pushed, or enter a tag to deploy that one. The workflow checks that every new pod runs
+   the copied digest, then waits for a new pod to answer through the load balancer: `up`, the platform "Kubernetes",
+   and the caller's address, the runner's, rather than the load balancer's. The first run after the Ingress is
+   created waits several minutes for the load balancer. The summary names the tag, the digest, the deployment's
+   revision and the pod.
+3. **Verify** as in the Verify section above, after setting `IP` in Cloud Shell with Run step 3.
+
 ## Tear down
 
 Delete the namespace first: it removes the Ingress, and with it the load balancer, before the cluster goes. Then the
@@ -174,12 +210,22 @@ kubectl delete namespace multi-cloud
 gcloud container clusters delete multi-cloud --region=us-central1
 ```
 
+If you set up the workflow and keep the service account for Cloud Run, take back its GKE role:
+
+```bash
+gcloud projects remove-iam-policy-binding <your-project-id> --member="serviceAccount:github-deployer@<your-project-id>.iam.gserviceaccount.com" --role=roles/container.developer --condition=None
+```
+
 ## What is different here
 
 - **The platform** is row 3 of the table in [SDD.md](SDD.md) section 5: "Kubernetes", with the pod's name as the
   instance, and no cloud provider or platform, because nothing in a pod's environment says the cluster is Google's.
 - **HTTPS is not set up.** Google's load balancer answers plain HTTP on a public address and forwards it to the pod;
   HTTPS would need a domain and a certificate.
+- **Two proxies' entries in `X-Forwarded-For`.** Google's load balancer appends the caller's address and then its
+  own public address, where Cloud Run's front end appends only the caller's. The first deploy, with the default of
+  trusting one entry, reported the load balancer as the caller; the deployment now sets
+  `ForwardedHeaders__ForwardLimit` to 2 ([SDD.md](SDD.md) decision D11). The scheme is `http`, as the caller used.
 - **The port** is the image's own 8080; nothing sets `PORT`.
 - **Kubernetes probes the application itself**: startup and liveness on `/healthz/ping`, readiness on
   `/healthz/ready`, which the load balancer's health check follows. None of them appears in the request log.

@@ -30,11 +30,12 @@ correctly before a real application goes there:
 - `docs/SDD.md`: the solution design, what is built, how it is laid out, and how phase 1 is accepted.
 - `docs/INSTALL-local.md`: build, run and verify it with `dotnet` and with Docker.
 - `docs/INSTALL-gcp-cloud-run.md`: deploy it to Google Cloud Run, by hand or with GitHub Actions.
-- `docs/INSTALL-gcp-gke.md`: deploy it to Google Kubernetes Engine, by hand.
+- `docs/INSTALL-gcp-gke.md`: deploy it to Google Kubernetes Engine, by hand or with GitHub Actions.
 - `Dockerfile` and `.dockerignore`: the one image.
 - `deploy/gke/`: the Kubernetes manifests for Google Kubernetes Engine.
 - `.github/workflows/`: **Publish image**, which builds the image once and publishes it to GitHub Container Registry,
-  and one deploy workflow per cloud, so far **Deploy to Google Cloud Run**. Each runs only when started by hand.
+  and one deploy workflow per cloud, so far **Deploy to Google Cloud Run** and **Deploy to Google Kubernetes
+  Engine**. Each runs only when started by hand.
 - `src/`: the solution, five projects.
 
 | Project | What it holds |
@@ -102,6 +103,7 @@ Each has its default in `appsettings.json` and is overridden by an environment v
 | `Heartbeat__WaitInSeconds` | `600` | Seconds between `Running` heartbeats; 1 or more |
 | `Diagnostics__ErrorRoutesEnabled` | `true` | Whether the two error routes throw, or answer 404 |
 | `Host__ShutdownTimeoutInSeconds` | `8` | How long the host waits for work to finish on shutdown |
+| `ForwardedHeaders__ForwardLimit` | `1` | How many entries of `X-Forwarded-For`, from the right, to trust: one per proxy in front; 2 on GKE |
 | `Notes__DatabaseName` | `Notes` | Name of the in-memory database |
 | `Serilog__*` | Console, JSON, `Information` | Log levels and sinks |
 | `PORT` | not set | The port to listen on, when a platform says which |
@@ -134,8 +136,9 @@ Every package and base image is pinned to one exact version:
 | `SonarAnalyzer.CSharp` | 10.35.0.4138 | Every project, from `src/Directory.Build.props` |
 | `Microsoft.CodeAnalysis.NetAnalyzers` | 10.0.402 | Every project, from `src/Directory.Build.props` |
 | `mattonweb/Signalbox` reusable pull request checks | `2026.1025.3` | **Publish image**, to build and test the solution |
-| `actions/checkout` | v7.0.1, commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | **Publish image** |
-| `google-github-actions/auth` | v3.0.0, commit `7c6bc770dae815cd3e89ee6cdf493a5fab2cc093` | **Deploy to Google Cloud Run** |
+| `actions/checkout` | v7.0.1, commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | **Publish image** and **Deploy to Google Kubernetes Engine** |
+| `google-github-actions/auth` | v3.0.0, commit `7c6bc770dae815cd3e89ee6cdf493a5fab2cc093` | **Deploy to Google Cloud Run** and **Deploy to Google Kubernetes Engine** |
+| `google-github-actions/get-gke-credentials` | v3.0.0, commit `3da1e46a907576cefaa90c484278bb5b259dd395` | **Deploy to Google Kubernetes Engine** |
 
 The two images, Entity Framework Core and the two `Microsoft.Extensions` abstractions are all from the .NET 10.0.14
 servicing release.

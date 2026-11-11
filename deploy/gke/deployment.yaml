@@ -33,6 +33,10 @@ spec:
           env:
             - name: Heartbeat__WaitInSeconds
               value: "60"
+            # Google's load balancer appends two entries to X-Forwarded-For, the caller's address and its own, where
+            # Cloud Run's front end appends one. Trusting two reports the caller (docs/SDD.md, decision D11).
+            - name: ForwardedHeaders__ForwardLimit
+              value: "2"
           resources:
             # Small, and within Autopilot's ratio of memory to CPU; Autopilot bills for what the pod requests.
             requests:

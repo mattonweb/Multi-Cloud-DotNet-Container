@@ -30,7 +30,7 @@ defect in the design, and is raised before it is made.
 |---|---|---|
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
 | 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand and by its workflow on 2026-11-11; not designed here |
-| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Next; Google Cloud is finished before AWS (Matt, 2026-11-11) |
+| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | In progress: deployed by hand on 2026-11-11; its workflow is written and has not run yet (section 17) |
 | 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
 
 Each later phase adds an install file and whatever platform settings it needs. Each install file is written as
@@ -169,7 +169,8 @@ One JSON document, `application/json`, that says where the application thinks it
   are not left out.
 - **Forwarded headers.** Every target platform ends HTTPS at a proxy in front of the container. The application
   honors `X-Forwarded-For` and `X-Forwarded-Proto`. In phase 1 this is switched on by an environment variable set in
-  the image, not by code.
+  the image, not by code. How many entries of `X-Forwarded-For` to trust, counted from the right, is the setting
+  `ForwardedHeaders:ForwardLimit`, one per proxy the platform puts in front: 1 by default, 2 on GKE (decision D11).
 - **No HTTPS redirection and no HSTS in the application.** The platform owns HTTPS.
 - **Port.** When the environment variable `PORT` is set, the application listens on that port on all interfaces.
   When it is not, the framework default applies: 8080 in the container image, the launch profile on a developer
@@ -325,6 +326,7 @@ for `:`.
 | `Heartbeat:WaitInSeconds` | `Heartbeat__WaitInSeconds` | `600` | Seconds between `Running` heartbeats |
 | `Diagnostics:ErrorRoutesEnabled` | `Diagnostics__ErrorRoutesEnabled` | `true` | Whether the two error routes throw or answer 404 |
 | `Host:ShutdownTimeoutInSeconds` | `Host__ShutdownTimeoutInSeconds` | `8` | How long the host waits for work to finish on shutdown |
+| `ForwardedHeaders:ForwardLimit` | `ForwardedHeaders__ForwardLimit` | `1` | How many entries of `X-Forwarded-For`, counted from the right, to trust: one per proxy in front (decision D11) |
 | `Notes:DatabaseName` | `Notes__DatabaseName` | `Notes` | Name of the in-memory database |
 | `Serilog:*` | `Serilog__*` | Console, JSON, `Information` | Levels and sinks |
 | (none) | `PORT` | not set | Port to listen on, when the platform supplies one |
@@ -458,17 +460,36 @@ turns out different is corrected here in the same change that discovers it.
   with its digest unchanged (`docker buildx imagetools create --prefer-index=false`), deployed that digest as a new
   revision, and checked that the revision answered. The project's ID and number showed masked throughout the log.
 
+**Confirmed on Google Kubernetes Engine, deployed by hand, 2026-11-11** (section 17):
+
+- **Row 3 of the platform table.** The root route reported "Kubernetes", the pod's name as the instance, and no cloud
+  provider, platform, region, service or revision, as the table says.
+- **Google's load balancer passes the application's answers through**: `/healthz/ping` answered `up` with
+  `X-Session-Id`, `X-Platform: Kubernetes` and `Via: 1.1 google`; 500, 403 and 404 arrived as
+  `application/problem+json` with `X-Session-Id`; every verb answered as in local Docker.
+- **Cloud Logging reads the pod's console as it reads Cloud Run's**: the 500 as `ERROR`, the 403's refusal as
+  `WARNING`, the rest as `INFO`. The load balancer's and Kubernetes's probes left no line in the request log.
+- **A pod Kubernetes replaces stops politely.** After `kubectl rollout restart`, the old pod wrote `Running` up to 7,
+  a minute apart, then `Stopping` 8; the new pod wrote `Started` with a new session.
+- **Finding: behind two proxies, the default trusts only one.** The root route reported the load balancer's own public
+  address as the caller's. Google's load balancer appends two entries to `X-Forwarded-For`, the caller's address and
+  then its own, where Cloud Run's front end appends one, and the framework's default limit trusts only the rightmost
+  entry. Decision D11 makes the limit a setting, which GKE's deployment sets to 2.
+
 **Still to confirm:**
 
-- Rows 2 and 3 of the platform table, in their cloud phases.
-- That forwarded headers are trusted from the proxy in front of the container on ECS and GKE, in their phases.
+- Row 2 of the platform table, in phase 4.
+- That forwarded headers are trusted from the proxy in front of the container on ECS, in phase 4.
+- That `ForwardedHeaders__ForwardLimit` at 2 reports the caller's address on GKE, and that the default of 1 leaves
+  Cloud Run as it was. Deploy to GKE checks the first on its first run; the next Cloud Run deploy shows the second.
+- That Deploy to GKE deploys the published bytes, as Deploy to Google Cloud Run does.
 
 ## 15. Decisions
 
 Decided by Matt: on 2026-11-10, D1 to D5 taking the recommendations from the first review of this design, and D6 and
 D7 after the first container run; on 2026-11-11, D8 after the first Cloud Run deploy, D9 when the first workflows
-were written, and D10 for phase 3. Each one is provisional: the cloud phases deploy the image for real, and a
-decision that does not survive that is changed here in the same change that finds it.
+were written, D10 for phase 3, and D11 after the first GKE deploy. Each one is provisional: the cloud phases deploy
+the image for real, and a decision that does not survive that is changed here in the same change that finds it.
 
 | # | Decision | Applied in |
 |---|---|---|
@@ -482,6 +503,7 @@ decision that does not survive that is changed here in the same change that find
 | D8 | Every log line carries `severity` and `message`: one Serilog.Expressions template, in code so it is tested, named by configuration and used by the bootstrap logger. Decided after the first Cloud Run deploy | Section 7 |
 | D9 | GitHub Actions, started only by hand: one workflow publishes the image once to GitHub Container Registry; one workflow per cloud copies it, digest unchanged, into that cloud's registry and deploys it. Each cloud's workflow follows its manual steps | Sections 2, 16 |
 | D10 | Phase 3 runs on a GKE Autopilot cluster, behind Google's HTTP load balancer from an Ingress, from plain manifests in `deploy/gke/`. GKE comes before AWS: Google Cloud is finished first | Sections 2, 17 |
+| D11 | How many entries of `X-Forwarded-For` to trust is the setting `ForwardedHeaders:ForwardLimit`, default 1, read by `Program.cs` like every other setting; GKE's deployment sets 2. A setting, not detection: the entries left of the platform's own are whatever the caller sent, so counting them cannot tell a proxy from a forgery. Decided after the first GKE deploy | Sections 4.4, 9, 17 |
 
 ## 16. Workflows
 
@@ -493,7 +515,8 @@ deploy workflow once its manual steps have been run and pass.
 |---|---|---|
 | Publish image | `.github/workflows/publish-image.yml` | Builds and unit-tests the solution through Signalbox's reusable pull request checks, pinned to a version tag; builds the image once for `linux/amd64`; pushes it to GitHub Container Registry as `ghcr.io/<owner>/multi-cloud-dotnet-container:<tag>`. Needs no cloud credential |
 | Deploy to Google Cloud Run | `.github/workflows/deploy-gcp-cloud-run.yml` | Takes a published tag, or, left blank, the newest tag on `ghcr.io`; signs in to Google through Workload Identity Federation; copies the image into Artifact Registry and checks the digest is unchanged; deploys that digest to the existing service; checks the new revision answers |
-| Deploy to GKE, deploy to AWS ECS | to come, in phases 3 and 4 | The same shape: sign in to the cloud without a stored key, copy by digest, deploy, check |
+| Deploy to Google Kubernetes Engine | `.github/workflows/deploy-gcp-gke.yml` | The same first three steps, with the same service account; then applies `deploy/gke/` with the image's digest, waits for the rollout, checks every new pod runs that digest, and checks through the load balancer that a new pod answers `up`, reports "Kubernetes", and reports the caller's address rather than the load balancer's. The cluster must already exist |
+| Deploy to AWS ECS | to come, in phase 4 | The same shape: sign in to the cloud without a stored key, copy by digest, deploy, check |
 
 - **The image is built once.** Every cloud runs the same digest: the publish run's digest is the digest each deploy
   copies, checks and deploys. That is the design's one rule, shown rather than assumed.
@@ -523,7 +546,13 @@ steps pass (section 16). Decided by Matt on 2026-11-11 (decision D10).
 - **Probes**: startup and liveness on `/healthz/ping`, which has no dependencies, so a failing dependency never
   restarts the pod; readiness on `/healthz/ready`, which the load balancer's health check follows. The grace period
   on a stop is 30 seconds, longer than the host's 8-second shutdown.
-- **Settings are environment variables in the deployment**, as on Cloud Run: `Heartbeat__WaitInSeconds` is 60.
+- **Settings are environment variables in the deployment**, as on Cloud Run: `Heartbeat__WaitInSeconds` is 60, and
+  `ForwardedHeaders__ForwardLimit` is 2, because Google's load balancer appends two entries to `X-Forwarded-For`
+  where Cloud Run's front end appends one (decision D11, found on the first deploy).
+- **The deploy workflow applies the same manifests** as the manual steps, with the image named by digest, and acts as
+  the service account Deploy to Google Cloud Run uses, given one more role: `roles/container.developer` on the
+  project, which reaches the Kubernetes objects in the project's clusters. That is one cluster here; a project with
+  others would narrow it with Kubernetes RBAC.
 - **Row 3 of the platform table** applies: "Kubernetes", the pod's name as the instance, no cloud provider. Nothing in
   a pod's environment says the cluster is Google's, and the design makes no network call, so GKE reports itself as
   any Kubernetes. Whether to change that, for example with a variable the deployment sets, is open until the first

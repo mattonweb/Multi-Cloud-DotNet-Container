@@ -157,6 +157,11 @@ public static class Program
 
         TimeSpan shutdownTimeout = settings.ReadShutdownTimeout();
         services.Configure<HostOptions>(options => options.ShutdownTimeout = shutdownTimeout);
+
+        // ASPNETCORE_FORWARDEDHEADERS_ENABLED, which the image sets, switches forwarded headers on; this says how many
+        // proxies' entries in X-Forwarded-For to trust, which only the platform can know (docs/SDD.md, decision D11).
+        ForwardLimit forwardLimit = settings.ReadForwardLimit();
+        services.Configure<ForwardedHeadersOptions>(options => options.ForwardLimit = forwardLimit.Value);
     }
 
     /// <summary>

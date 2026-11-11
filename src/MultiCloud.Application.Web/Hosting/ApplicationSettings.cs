@@ -23,6 +23,7 @@ internal sealed class ApplicationSettings
     private const string ErrorRoutesKey = "Diagnostics:ErrorRoutesEnabled";
     private const string ShutdownTimeoutKey = "Host:ShutdownTimeoutInSeconds";
     private const string NotesDatabaseKey = "Notes:DatabaseName";
+    private const string ForwardLimitKey = "ForwardedHeaders:ForwardLimit";
     private const string PortKey = "PORT";
 
     private readonly IConfiguration _configuration;
@@ -93,6 +94,23 @@ internal sealed class ApplicationSettings
     {
         string name = this.ReadText(NotesDatabaseKey);
         return new DatabaseName(name);
+    }
+
+    /// <summary>
+    /// Reads <c>ForwardedHeaders:ForwardLimit</c>, which must be 1 or more: how many proxies the platform puts in front
+    /// of the application, and so how many entries of <c>X-Forwarded-For</c> to trust.
+    /// </summary>
+    /// <returns>The number of entries to trust.</returns>
+    public ForwardLimit ReadForwardLimit()
+    {
+        int entries = this.ReadWholeNumber(ForwardLimitKey);
+        if (entries < 1)
+        {
+            throw new InvalidOperationException(
+                $"The setting {ForwardLimitKey} is {entries}; it must be 1 or more.");
+        }
+
+        return new ForwardLimit(entries);
     }
 
     /// <summary>

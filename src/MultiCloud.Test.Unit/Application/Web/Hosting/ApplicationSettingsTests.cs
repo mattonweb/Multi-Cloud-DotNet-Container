@@ -159,6 +159,57 @@ public sealed class ApplicationSettingsTests
     }
 
     /// <summary>
+    /// Unit test to verify that the number of trusted forwarding proxies is read as configured, as GKE's deployment
+    /// sets it.
+    /// </summary>
+    [TestMethod]
+    public void ReadForwardLimit_Two_ReturnsTwo()
+    {
+        // Arrange (Given)
+        ApplicationSettings settings = CreateSettings("ForwardedHeaders:ForwardLimit", "2");
+
+        // Act (When)
+        ForwardLimit limit = settings.ReadForwardLimit();
+
+        // Assert (Then)
+        Assert.AreEqual(
+            2,
+            limit.Value,
+            "The limit should be read as configured.");
+    }
+
+    /// <summary>
+    /// Unit test to verify that a limit below 1 stops the application at startup with a message that names the
+    /// setting.
+    /// </summary>
+    [TestMethod]
+    public void ReadForwardLimit_Zero_ThrowsNamingTheSetting()
+    {
+        // Arrange (Given)
+        ApplicationSettings settings = CreateSettings("ForwardedHeaders:ForwardLimit", "0");
+        InvalidOperationException? caughtException = null;
+
+        // Act (When)
+        try
+        {
+            settings.ReadForwardLimit();
+        }
+        catch (InvalidOperationException ex)
+        {
+            caughtException = ex;
+        }
+
+        // Assert (Then)
+        Assert.IsNotNull(
+            caughtException,
+            "A limit of 0 should stop the application with InvalidOperationException.");
+        StringAssert.Contains(
+            caughtException.Message,
+            "ForwardedHeaders:ForwardLimit",
+            "The message should name the setting that is wrong.");
+    }
+
+    /// <summary>
     /// Unit test to verify that no port is chosen when the platform sets none, so the framework's default applies.
     /// </summary>
     [TestMethod]
