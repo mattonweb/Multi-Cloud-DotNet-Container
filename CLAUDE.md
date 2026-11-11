@@ -5,6 +5,9 @@
 - **2026-11-10 (attended session with Matt): this file was written and the repository set up.** Nothing here has
   run yet. The solution does not exist until the first session creates it from `docs/SDD.md`; the layout section
   below says where.
+- **2026-11-10 (attended session with Matt): the design's open questions were decided** (`docs/SDD.md` section 15).
+  Five projects, and the heartbeat Orchestrator references no other project. The solution architecture paragraph
+  below now says so.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -117,13 +120,12 @@ here, with its line count and a reason, in the same session that creates it.
 **Solution architecture (`dotnet-solution-architecture` section 7): adoption state `conforming`.** The planned
 solution holds one Application (`MultiCloud.Application.Web`), two Adapters (`MultiCloud.Adapter.Platform` for the
 hosting platform, `MultiCloud.Adapter.Notes` for the one data store), one Orchestrator
-(`MultiCloud.Orchestrator.Heartbeat`, which references the platform Adapter through its contract) and one test
-project (`MultiCloud.Test.Unit`). **One Adapter per data store it owns:** a new entity type joins
+(`MultiCloud.Orchestrator.Heartbeat`, which references no other project in the solution) and one test project
+(`MultiCloud.Test.Unit`). **One Adapter per data store it owns:** a new entity type joins
 `MultiCloud.Adapter.Notes`, never a new project. Each class library exposes only `Configuration/`, `Contracts/` and
 `ServiceCollectionExtensions`; controllers stay presentation. A change that would break a dependency rule or make an
-internal type public is declined with the reason. No architecture test exists yet. `docs/SDD.md` section 3 holds one
-open decision about the project count; if Matt has not answered it when the first session starts, ask before
-creating a project.
+internal type public is declined with the reason. No architecture test exists yet. The five-project shape is Matt's
+decision D1 (`docs/SDD.md` section 15), provisional until the cloud phases have deployed it.
 
 The house `.editorconfig` (`src/.editorconfig`) and `.gitattributes` are verbatim copies of Signalbox's root files,
 applied 2026-11-10. A copy that differs from Signalbox is drift: it is fixed in Signalbox first, never here.
