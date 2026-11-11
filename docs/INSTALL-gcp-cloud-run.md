@@ -143,18 +143,19 @@ URL=$(gcloud run services describe multi-cloud --region us-central1 --format='va
    A `404` part-way through means Cloud Run started a second instance and the note lives in the other one; each
    instance has its own notes, and the `x-session-id` header shows which answered.
 
-5. **The logs in Cloud Logging.** Give new lines a few seconds to arrive. The application's own lines carry a
-   `SourceContext`; the lines without one are Cloud Run's request log, whose severity comes from the status code.
+5. **The logs in Cloud Logging.** Give new lines a few seconds to arrive. This reads the application's own lines,
+   which carry a `message`; Cloud Run's request log, beside them, takes its severity from the status code.
 
    ```bash
-   gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="multi-cloud"' --limit 25 --format='table(timestamp, severity, jsonPayload.SourceContext, jsonPayload.HeartbeatKind, jsonPayload.HeartbeatSequence, jsonPayload.StatusCode)'
+   gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="multi-cloud" AND jsonPayload.message:*' --limit 20 --format='table(timestamp, severity, jsonPayload.message)'
    ```
 
-   Expect every line of the application's to carry a severity: `INFO` for the heartbeats and most requests, `ERROR`
-   for the 500 with its exception, `WARNING` for the 403. Each line writes its level as `severity`, which Cloud
-   Logging reads, and its message as `message`, which Cloud Logging shows as the entry's summary
-   ([SDD.md](SDD.md) section 7, decision D8). An image built before decision D8 writes `@l` instead, and its lines
-   arrive with no severity: that was the first deploy's result, on 2026-11-11.
+   Expect every line to carry a severity: `ERROR` for the 500's two lines, `WARNING` for the 403's refusal, `INFO`
+   for the heartbeats, the startup lines and the other requests. Each line writes its level as `severity`, which
+   Cloud Logging reads, and its message as `message`, which Cloud Logging shows as the entry's summary
+   ([SDD.md](SDD.md) section 7, decision D8); confirmed on 2026-11-11 with image `2026.1111.2`. An image built before
+   decision D8 writes `@l` instead, and its lines arrive with no severity. A `WARNING` that Kestrel's heartbeat ran
+   late is Cloud Run's doing, not the application's: see What is different here.
 
 6. **Heartbeats, and the end of an idle instance.** Expect `Running` lines one minute apart, numbered in sequence
    with no gap, even while no request is in progress. About 15 minutes after the last request, Cloud Run stops the
@@ -303,4 +304,9 @@ gcloud iam service-accounts delete github-deployer@<your-project-id>.iam.gservic
   instance about 15 minutes after its last request, with a polite stop signal, so the instance writes its `Stopping`
   heartbeat; the next request starts a new session. By default an instance has CPU only while a request is in
   progress, and the heartbeat kept time through the idle minutes all the same.
+- **Kestrel may warn once after a start.** Kestrel, the web server inside the application, keeps a one-second timer
+  it calls its heartbeat; it is not the application's heartbeat. While Cloud Run withholds CPU between startup and the
+  first request, that timer runs late, and Kestrel logs a `WARNING` that it "has been running for" a few seconds,
+  "longer than 00:00:01", and mentions thread pool starvation. It is harmless. Cloud Run's startup CPU boost, or CPU
+  always allocated, would remove it, at a cost.
 - **The service is public**, through `--allow-unauthenticated`.

@@ -29,7 +29,7 @@ defect in the design, and is raised before it is made.
 | Phase | Deliverable | State |
 |---|---|---|
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
-| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand on 2026-11-11; not designed here |
+| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand and by its workflow on 2026-11-11; not designed here |
 | 3 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
 | 4 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Later; not designed here |
 
@@ -438,20 +438,30 @@ turns out different is corrected here in the same change that discovers it.
 - **An instance Cloud Run stops writes its `Stopping` line.** About 15 minutes after its last request, Cloud Run
   stopped the idle instance, and its last line was `Stopping` with the next number: Cloud Run sends a polite stop
   signal, and the 8-second shutdown timeout is long enough.
+- **Cloud Logging reads decision D8's `severity` and `message`.** On the first revision deployed with them, the 500's
+  lines arrived as `ERROR`, the 403's refusal as `WARNING`, and the heartbeats and startup lines as `INFO`, each with
+  its message as the entry's summary.
+- **Kestrel warns when Cloud Run withholds CPU.** Between startup and the first request, Kestrel's own one-second
+  timer, which it calls its heartbeat and which is not the application's, ran 3.5 seconds late, and Kestrel logged
+  a `WARNING` about thread pool starvation when the request arrived. It is the effect of CPU given only during
+  requests, harmless, and a platform setting (startup CPU boost, or CPU always allocated) would remove it.
+
+**Confirmed by the workflows, 2026-11-11** (section 16):
+
+- **Publish image publishes one image manifest.** Its first run built and tested everything, then `ghcr.io` refused
+  the push with `denied`: the runner's Docker (Ubuntu 26.04) adds a provenance attestation by default, which turns the
+  push into a manifest list, and `ghcr.io` reads the source label that links a new package to its repository from the
+  image itself. Built with no attestation, the second run published `2026.1111.2`, the digest it read back matching
+  the one the registry reported.
+- **Deploy to Google Cloud Run deploys the published bytes.** Its first run, with the tag left blank, chose
+  `2026.1111.2` from `ghcr.io`, signed in through Workload Identity Federation, copied the image to Artifact Registry
+  with its digest unchanged (`docker buildx imagetools create --prefer-index=false`), deployed that digest as a new
+  revision, and checked that the revision answered. The project's ID and number showed masked throughout the log.
 
 **Still to confirm:**
 
 - Rows 2 and 3 of the platform table, in their cloud phases.
 - That forwarded headers are trusted from the proxy in front of the container on ECS and GKE, in their phases.
-- That Cloud Logging reads the `severity` and `message` of decision D8's lines, from the first image deployed with them.
-- That **Publish image** and **Deploy to Google Cloud Run** run as written (section 16). The copy that keeps the
-  digest (`docker buildx imagetools create --prefer-index=false`) is checked by the deploy workflow itself. Publish
-  image's first run, on 2026-11-11, built and tested the solution and the image, then `ghcr.io` refused the push with
-  `denied`: the runner's Docker (Ubuntu 26.04) adds a provenance attestation by default, which turns the push into a
-  manifest list, and `ghcr.io` reads the source label that links a new package to its repository from the image
-  itself. The workflow now builds one image manifest, with no attestation, and its second run published `2026.1111.2`
-  as one manifest, the digest it read back matching the one the registry reported. Deploy to Google Cloud Run has not
-  run yet.
 
 ## 15. Decisions
 
