@@ -225,6 +225,18 @@ BASE=http://localhost:8080
     curl -s -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 203.0.113.7' $BASE/ | grep -o '"request":{[^}]*}'
     ```
 
+13. **Errors the framework answers itself.** A route that does not exist answers `404`, and a verb a route does not
+    take answers `405`. Expect each with `Content-Type: application/problem+json` and a body holding `sessionId`,
+    never an empty body. A browser shows this JSON too, not a page of its own.
+
+    ```bash
+    curl -i $BASE/nowhere
+    ```
+
+    ```bash
+    curl -i -X DELETE $BASE/healthz/ping
+    ```
+
 The notes live inside one process. With two instances behind a load balancer, a note created on one is absent on
 the other, and a restart empties them; the `X-Session-Id` header on each response shows which instance answered.
 

@@ -212,7 +212,8 @@ public static class Program
 
     /// <summary>
     /// Builds the request pipeline. The order is the point: the response headers go on everything, the request log
-    /// sees the status the exception handler chose, and the exception handler catches whatever the controllers throw.
+    /// sees the status the exception handler chose, the exception handler catches whatever the controllers throw, and
+    /// an error answered with no body gets one.
     /// </summary>
     /// <param name="application">The application being built.</param>
     /// <remarks>
@@ -224,6 +225,11 @@ public static class Program
         application.UseMiddleware<ResponseHeadersMiddleware>();
         application.UseWhen(RequestLogFilter.IsLogged, UseRequestLogging);
         application.UseExceptionHandler();
+
+        // The framework answers some errors itself with no body: 404 for a route that does not exist, 405 for a verb a
+        // route does not take. With problem details registered, this writes Problem Details into each of them, so a
+        // client that expects JSON gets JSON for every error, not an empty body its browser dresses up as a page.
+        application.UseStatusCodePages();
         application.MapControllers();
     }
 

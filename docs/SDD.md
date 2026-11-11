@@ -157,6 +157,10 @@ One JSON document, `application/json`, that says where the application thinks it
 - **Exception handling.** One `IExceptionHandler` with problem details. An exception carrying a status code is
   answered with that status and logged as a warning; anything else is answered with 500 and logged as an error with
   the exception. The problem details body includes the session identifier.
+- **Errors the framework answers itself are Problem Details too.** A route that does not exist (404) and a verb a
+  route does not take (405) would otherwise go out with no body, which a browser dresses up as its own HTML page. The
+  status code pages middleware writes Problem Details into every error response that has no body, so every error is
+  `application/problem+json`. Found by Matt under `dotnet run`, after decision D7.
 - **Response headers on every response.** `X-Session-Id` (the session identifier) and `X-Platform` (the platform
   name). A 403 or a 500 without these headers did not come from the application.
 - **Request logging.** One log line per request, written after the response, with verb, path, status and duration.
@@ -371,6 +375,7 @@ run. That is a build or setup failure to fix first, not a failed check.
 | 9 | Send POST, GET, HEAD, PUT, PATCH, OPTIONS and DELETE to the notes routes, then GET the deleted note | 201, 200, 200, 200, 200, 204, 204, then 404 |
 | 10 | Read the request log after checks 3 to 9 | The notes and error requests are logged; no ping or ready request is |
 | 11 | GET `/` in the container, then under `dotnet run` | JSON whose `platform.name` is "Container, platform not identified" in the first and "Local process" in the second |
+| 12 | GET a route that does not exist, and DELETE `/healthz/ping` | 404 and 405, each `application/problem+json` with `sessionId`; never an empty body |
 
 Check 4 is the one that matters most: it proves in one step that the session identifier, the enrichment, the
 heartbeat and the response header all come from the same run.

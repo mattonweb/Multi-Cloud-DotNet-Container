@@ -82,7 +82,9 @@ Every URL is lower case. `src/MultiCloud.Application.Web/MultiCloud.Application.
 
 A note's text is 1 to 200 characters and not only white space; anything else is a 400 with problem details. Every
 response carries `X-Session-Id` and `X-Platform`, and every problem details body carries `sessionId`: a 403 or a
-500 without them did not come from the application.
+500 without them did not come from the application. Every error is Problem Details (RFC 9457,
+`application/problem+json`), including a 404 for a route that does not exist and a 405 for a verb a route does not
+take; none is an empty body or an HTML page.
 
 ### Settings
 
