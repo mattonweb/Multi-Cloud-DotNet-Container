@@ -30,8 +30,8 @@ defect in the design, and is raised before it is made.
 |---|---|---|
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
 | 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand and by its workflow on 2026-11-11; not designed here |
-| 3 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
-| 4 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Later; not designed here |
+| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Next; Google Cloud is finished before AWS (Matt, 2026-11-11) |
+| 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
 
 Each later phase adds an install file and whatever platform settings it needs. Each install file is written as
 plain command-line steps a person can follow by hand, and ends with a section recording what was different on that
@@ -195,7 +195,7 @@ The platform name is for people: the root route and the `X-Platform` header show
 platform are for log systems: they hold OpenTelemetry's well-known values for the `cloud.provider` and
 `cloud.platform` attributes (section 7), and are absent on a row that has no well-known value (decision D3). A
 cluster found through `KUBERNETES_SERVICE_HOST` may be anyone's Kubernetes, not only Google's, so that row sets
-neither; phase 4 decides whether Google Kubernetes Engine can be told apart without a network call.
+neither; phase 3 decides whether Google Kubernetes Engine can be told apart without a network call.
 
 Detection reads environment variables only. No network call in phase 1. Environment variables are read through an
 injected abstraction so tests supply their own.
@@ -466,9 +466,9 @@ turns out different is corrected here in the same change that discovers it.
 ## 15. Decisions
 
 Decided by Matt: on 2026-11-10, D1 to D5 taking the recommendations from the first review of this design, and D6 and
-D7 after the first container run; on 2026-11-11, D8 after the first Cloud Run deploy, and D9 when the first workflows
-were written. Each one is provisional: the cloud phases deploy the image for real, and a decision that does not
-survive that is changed here in the same change that finds it.
+D7 after the first container run; on 2026-11-11, D8 after the first Cloud Run deploy, D9 when the first workflows
+were written, and D10 for phase 3. Each one is provisional: the cloud phases deploy the image for real, and a
+decision that does not survive that is changed here in the same change that finds it.
 
 | # | Decision | Applied in |
 |---|---|---|
@@ -481,6 +481,7 @@ survive that is changed here in the same change that finds it.
 | D7 | No views: the application is a JSON API and returns no HTML page. `GET /` answers JSON; MVC is registered without views, which also removes data protection | Sections 4, 4.2, 4.4 |
 | D8 | Every log line carries `severity` and `message`: one Serilog.Expressions template, in code so it is tested, named by configuration and used by the bootstrap logger. Decided after the first Cloud Run deploy | Section 7 |
 | D9 | GitHub Actions, started only by hand: one workflow publishes the image once to GitHub Container Registry; one workflow per cloud copies it, digest unchanged, into that cloud's registry and deploys it. Each cloud's workflow follows its manual steps | Sections 2, 16 |
+| D10 | Phase 3 runs on a GKE Autopilot cluster, behind Google's HTTP load balancer from an Ingress, from plain manifests in `deploy/gke/`. GKE comes before AWS: Google Cloud is finished first | Sections 2, 17 |
 
 ## 16. Workflows
 
@@ -492,7 +493,7 @@ deploy workflow once its manual steps have been run and pass.
 |---|---|---|
 | Publish image | `.github/workflows/publish-image.yml` | Builds and unit-tests the solution through Signalbox's reusable pull request checks, pinned to a version tag; builds the image once for `linux/amd64`; pushes it to GitHub Container Registry as `ghcr.io/<owner>/multi-cloud-dotnet-container:<tag>`. Needs no cloud credential |
 | Deploy to Google Cloud Run | `.github/workflows/deploy-gcp-cloud-run.yml` | Takes a published tag, or, left blank, the newest tag on `ghcr.io`; signs in to Google through Workload Identity Federation; copies the image into Artifact Registry and checks the digest is unchanged; deploys that digest to the existing service; checks the new revision answers |
-| Deploy to AWS ECS, deploy to GKE | to come, in phases 3 and 4 | The same shape: sign in to the cloud without a stored key, copy by digest, deploy, check |
+| Deploy to GKE, deploy to AWS ECS | to come, in phases 3 and 4 | The same shape: sign in to the cloud without a stored key, copy by digest, deploy, check |
 
 - **The image is built once.** Every cloud runs the same digest: the publish run's digest is the digest each deploy
   copies, checks and deploys. That is the design's one rule, shown rather than assumed.
@@ -503,3 +504,27 @@ deploy workflow once its manual steps have been run and pass.
   repository secrets, which GitHub masks in the run logs that a public repository shows to everyone.
 - **Every action is pinned to a commit**, and Signalbox's reusable workflow to a version tag, as in Matt's other
   repositories.
+
+## 17. Phase 3: Google Kubernetes Engine
+
+The same image on GKE, deployed by hand first from `docs/INSTALL-gcp-gke.md`, then by a deploy workflow once those
+steps pass (section 16). Decided by Matt on 2026-11-11 (decision D10).
+
+- **An Autopilot cluster**, `multi-cloud`, in `us-central1`, the region of the image repository. Google runs, sizes and
+  patches the nodes; the pod's requests, 0.1 vCPU and 256 MiB, are what is billed. Standard mode, with nodes to choose
+  and patch, was the alternative.
+- **Google's external HTTP load balancer in front, from an Ingress**, so a proxy sits in front of the container as on
+  Cloud Run, and forwarded headers and Problem Details are tested through it again. A LoadBalancer Service, with
+  nothing in front to rewrite the request, was the alternative. Plain HTTP on a public address; HTTPS needs a domain
+  and a certificate.
+- **The manifests are plain Kubernetes YAML in `deploy/gke/`**: a namespace, a deployment, a service and an ingress.
+  The deployment's image is `${IMAGE}`, filled in by `envsubst` when it is applied, because the image's address holds
+  the project's ID, which stays out of this repository.
+- **Probes**: startup and liveness on `/healthz/ping`, which has no dependencies, so a failing dependency never
+  restarts the pod; readiness on `/healthz/ready`, which the load balancer's health check follows. The grace period
+  on a stop is 30 seconds, longer than the host's 8-second shutdown.
+- **Settings are environment variables in the deployment**, as on Cloud Run: `Heartbeat__WaitInSeconds` is 60.
+- **Row 3 of the platform table** applies: "Kubernetes", the pod's name as the instance, no cloud provider. Nothing in
+  a pod's environment says the cluster is Google's, and the design makes no network call, so GKE reports itself as
+  any Kubernetes. Whether to change that, for example with a variable the deployment sets, is open until the first
+  deploy shows what the environment holds.

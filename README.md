@@ -22,15 +22,17 @@ correctly before a real application goes there:
 |---|---|---|
 | 1 | The application, the `Dockerfile`, and running it locally | Built; [docs/INSTALL-local.md](docs/INSTALL-local.md) |
 | 2 | Google Cloud Run | In progress: deployed by hand and with GitHub Actions; [docs/INSTALL-gcp-cloud-run.md](docs/INSTALL-gcp-cloud-run.md) |
-| 3 | AWS ECS on Fargate | Not started |
-| 4 | Google Kubernetes Engine | Not started |
+| 3 | Google Kubernetes Engine | Next |
+| 4 | AWS ECS on Fargate | Not started |
 
 ## What is here
 
 - `docs/SDD.md`: the solution design, what is built, how it is laid out, and how phase 1 is accepted.
 - `docs/INSTALL-local.md`: build, run and verify it with `dotnet` and with Docker.
 - `docs/INSTALL-gcp-cloud-run.md`: deploy it to Google Cloud Run, by hand or with GitHub Actions.
+- `docs/INSTALL-gcp-gke.md`: deploy it to Google Kubernetes Engine, by hand.
 - `Dockerfile` and `.dockerignore`: the one image.
+- `deploy/gke/`: the Kubernetes manifests for Google Kubernetes Engine.
 - `.github/workflows/`: **Publish image**, which builds the image once and publishes it to GitHub Container Registry,
   and one deploy workflow per cloud, so far **Deploy to Google Cloud Run**. Each runs only when started by hand.
 - `src/`: the solution, five projects.

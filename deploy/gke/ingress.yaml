@@ -1,0 +1,17 @@
+# Google's external HTTP load balancer in front of the service: the proxy in front of the container on GKE, as Google's
+# front end is on Cloud Run (docs/SDD.md section 17, decision D10). Its health check follows the pod's readiness probe,
+# /healthz/ready. Plain HTTP on a public IP; HTTPS would need a domain and a certificate.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multi-cloud
+  namespace: multi-cloud
+  annotations:
+    # GKE still selects its controller by this annotation, though Kubernetes has deprecated it.
+    kubernetes.io/ingress.class: gce
+spec:
+  defaultBackend:
+    service:
+      name: multi-cloud
+      port:
+        name: http

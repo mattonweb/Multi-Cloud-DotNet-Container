@@ -1,0 +1,62 @@
+# The application on Google Kubernetes Engine: one pod running the published image, unchanged (docs/SDD.md section 17).
+#
+# ${IMAGE} is filled in when the file is applied, with envsubst, because the image's address holds the project's ID,
+# which stays out of this repository. Everything that differs from the other platforms is a setting here, never code.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-cloud
+  namespace: multi-cloud
+  labels:
+    app: multi-cloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: multi-cloud
+  template:
+    metadata:
+      labels:
+        app: multi-cloud
+    spec:
+      # Longer than the host's own 8-second shutdown timeout, so the Stopping heartbeat is written before Kubernetes
+      # gives up waiting and kills the container.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: ${IMAGE}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: Heartbeat__WaitInSeconds
+              value: "60"
+          resources:
+            # Small, and within Autopilot's ratio of memory to CPU; Autopilot bills for what the pod requests.
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # Liveness and startup use /healthz/ping, which has no dependencies, so a failing dependency never makes
+          # Kubernetes restart the pod. Readiness uses /healthz/ready, and the load balancer's health check follows it.
+          startupProbe:
+            httpGet:
+              path: /healthz/ping
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz/ping
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+            periodSeconds: 5

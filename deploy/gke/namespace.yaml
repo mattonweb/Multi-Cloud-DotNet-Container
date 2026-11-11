@@ -1,0 +1,6 @@
+# The namespace that holds everything this application puts in the cluster, so one command removes it all
+# (docs/INSTALL-gcp-gke.md).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multi-cloud
