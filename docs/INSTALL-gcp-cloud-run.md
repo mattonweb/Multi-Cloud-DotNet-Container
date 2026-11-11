@@ -248,9 +248,11 @@ account that may push images to the one repository, deploy revisions of the one 
    and the unit tests first, then publishes. The run's summary names the tag and the digest, for example
    `Deploy it by running a deploy workflow with tag 2026.1111.1`. The first run creates the package
    `multi-cloud-dotnet-container` under your GitHub account, linked to this repository.
-2. **Deploy.** Choose **Deploy to Google Cloud Run**, then **Run workflow**, and enter the tag. It copies the image,
+2. **Deploy.** Choose **Deploy to Google Cloud Run**, then **Run workflow**. Leave the tag blank to deploy the newest
+   image Publish image pushed, or enter a tag to deploy that one, for instance to go back to an earlier image. The tag
+   is the image's tag on `ghcr.io`, shown on the package's page; it is not a git tag. The workflow copies the image,
    checks the copy has the same digest, deploys that digest, and checks that the new revision answers `up` and reports
-   "Google Cloud Run" and its own revision name. The summary names the digest and the revision.
+   "Google Cloud Run" and its own revision name. The summary names the tag, the digest and the revision.
 3. **Verify** as in the Verify section above. The image is the same bytes the publish run built: the digest in the
    deploy's summary is the publish's digest.
 

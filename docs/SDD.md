@@ -449,7 +449,9 @@ turns out different is corrected here in the same change that discovers it.
   image's first run, on 2026-11-11, built and tested the solution and the image, then `ghcr.io` refused the push with
   `denied`: the runner's Docker (Ubuntu 26.04) adds a provenance attestation by default, which turns the push into a
   manifest list, and `ghcr.io` reads the source label that links a new package to its repository from the image
-  itself. The workflow now builds one image manifest, with no attestation; it has not run since.
+  itself. The workflow now builds one image manifest, with no attestation, and its second run published `2026.1111.2`
+  as one manifest, the digest it read back matching the one the registry reported. Deploy to Google Cloud Run has not
+  run yet.
 
 ## 15. Decisions
 
@@ -479,7 +481,7 @@ deploy workflow once its manual steps have been run and pass.
 | Workflow | File | What it does |
 |---|---|---|
 | Publish image | `.github/workflows/publish-image.yml` | Builds and unit-tests the solution through Signalbox's reusable pull request checks, pinned to a version tag; builds the image once for `linux/amd64`; pushes it to GitHub Container Registry as `ghcr.io/<owner>/multi-cloud-dotnet-container:<tag>`. Needs no cloud credential |
-| Deploy to Google Cloud Run | `.github/workflows/deploy-gcp-cloud-run.yml` | Takes a published tag; signs in to Google through Workload Identity Federation; copies the image into Artifact Registry and checks the digest is unchanged; deploys that digest to the existing service; checks the new revision answers |
+| Deploy to Google Cloud Run | `.github/workflows/deploy-gcp-cloud-run.yml` | Takes a published tag, or, left blank, the newest tag on `ghcr.io`; signs in to Google through Workload Identity Federation; copies the image into Artifact Registry and checks the digest is unchanged; deploys that digest to the existing service; checks the new revision answers |
 | Deploy to AWS ECS, deploy to GKE | to come, in phases 3 and 4 | The same shape: sign in to the cloud without a stored key, copy by digest, deploy, check |
 
 - **The image is built once.** Every cloud runs the same digest: the publish run's digest is the digest each deploy

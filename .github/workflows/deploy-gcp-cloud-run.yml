@@ -2,9 +2,10 @@
 # Registry, deploy that digest to the existing Cloud Run service, and check the new revision answers. These are the
 # steps in docs/INSTALL-gcp-cloud-run.md, automated (docs/SDD.md section 16, decision D9).
 #
-# Started only by hand (workflow_dispatch), with the tag the publish workflow gave the image. It signs in to Google
-# through Workload Identity Federation, so no Google key is stored anywhere. The project ID and number are repository
-# secrets rather than variables, so GitHub masks them in this public repository's run logs.
+# Started only by hand (workflow_dispatch). Left blank, the tag is the newest one Publish image pushed; a tag typed in
+# redeploys that image instead. It signs in to Google through Workload Identity Federation, so no Google key is stored
+# anywhere. The project ID and number are repository secrets rather than variables, so GitHub masks them in this public
+# repository's run logs.
 
 name: Deploy to Google Cloud Run
 
@@ -12,9 +13,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: The published image's tag, such as 2026.1111.1, from a run of Publish image.
+        description: The published image's tag, such as 2026.1111.2. Leave blank for the newest one Publish image pushed.
         type: string
-        required: true
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -29,7 +31,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ inputs.tag }}
+      REQUESTED_TAG: ${{ inputs.tag }}
       IMAGE_NAME: multi-cloud-dotnet-container
       REGION: us-central1
       REPOSITORY: multi-cloud
@@ -41,19 +43,37 @@ jobs:
         shell: bash
 
     steps:
-      - name: Check the tag and name the published image
+      - name: Choose the tag and name the published image
         id: name
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          if [[ ! "$TAG" =~ ^[0-9]{4}\.[0-9]{4}\.[0-9]+$ ]]; then
-            echo "The tag '$TAG' is not <YYYY.MMdd>.<run number>, the form Publish image gives." >&2
-            exit 1
-          fi
           if [ -z "$PROJECT_ID" ]; then
             echo "The repository secret GCP_PROJECT_ID is not set; docs/INSTALL-gcp-cloud-run.md says how." >&2
             exit 1
           fi
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "source=ghcr.io/$owner/$IMAGE_NAME:$TAG" >> "$GITHUB_OUTPUT"
+          tag="$REQUESTED_TAG"
+          if [ -z "$tag" ]; then
+            # No tag given: ask ghcr.io for the image's tags and take the newest. <YYYY.MMdd>.<run number> sorts by
+            # date, then run number, so the newest is the last in version order.
+            token="$(curl --silent --show-error --fail --user "$GITHUB_ACTOR:$GITHUB_TOKEN" \
+              "https://ghcr.io/token?scope=repository:$owner/$IMAGE_NAME:pull" | jq -r '.token')"
+            tag="$(curl --silent --show-error --fail --header "Authorization: Bearer $token" \
+              "https://ghcr.io/v2/$owner/$IMAGE_NAME/tags/list?n=1000" \
+              | jq -r '.tags[]' | { grep -E '^[0-9]{4}\.[0-9]{4}\.[0-9]+$' || true; } | sort -V | tail -n 1)"
+            if [ -z "$tag" ]; then
+              echo "No tag was given, and ghcr.io holds no image Publish image pushed. Run Publish image first." >&2
+              exit 1
+            fi
+            echo "No tag was given; deploying the newest published image, $tag."
+          fi
+          if [[ ! "$tag" =~ ^[0-9]{4}\.[0-9]{4}\.[0-9]+$ ]]; then
+            echo "The tag '$tag' is not <YYYY.MMdd>.<run number>, the form Publish image gives." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "source=ghcr.io/$owner/$IMAGE_NAME:$tag" >> "$GITHUB_OUTPUT"
 
       - name: Sign in to Google
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
@@ -64,6 +84,7 @@ jobs:
       - name: Copy the image into Artifact Registry
         id: copy
         env:
+          TAG: ${{ steps.name.outputs.tag }}
           SOURCE: ${{ steps.name.outputs.source }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -87,6 +108,7 @@ jobs:
       - name: Deploy the digest
         id: deploy
         env:
+          TAG: ${{ steps.name.outputs.tag }}
           DIGEST: ${{ steps.copy.outputs.digest }}
         run: |
           TARGET="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME"
@@ -124,6 +146,7 @@ jobs:
       - name: Write summary
         if: always()
         env:
+          TAG: ${{ steps.name.outputs.tag || inputs.tag }}
           DIGEST: ${{ steps.copy.outputs.digest }}
           REVISION: ${{ steps.deploy.outputs.revision }}
           COPY_OUTCOME: ${{ steps.copy.outcome }}
