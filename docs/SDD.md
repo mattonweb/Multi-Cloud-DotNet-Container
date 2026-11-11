@@ -1,7 +1,7 @@
 # Solution Design: Multi-Cloud DotNet Container
 
-Status: phase 1 (runs locally and in a local container) is ready to build. Written 2026-11-10. Nothing in this
-document has been built or run yet.
+Status: phase 1 (runs locally and in a local container) is ready to build. Written 2026-11-10; its open questions
+were decided the same day (section 15). Nothing in this document has been built or run yet.
 
 ## 1. Purpose
 
@@ -67,16 +67,15 @@ commit.
 | `MultiCloud.Application.Web` | Application | The host. Loads configuration, builds each options object, calls each registration, holds controllers and the view. No application logic. | The three below |
 | `MultiCloud.Adapter.Platform` | Adapter | The hosting platform is an external system. Each platform announces itself differently; this project translates all of them into one contract. | Nothing in the solution |
 | `MultiCloud.Adapter.Notes` | Adapter | Owns one data store, the in-memory `Notes` database. | Nothing in the solution |
-| `MultiCloud.Orchestrator.Heartbeat` | Orchestrator | A scheduled task is an entry point, and entry points live in Orchestrators. | `MultiCloud.Adapter.Platform` |
+| `MultiCloud.Orchestrator.Heartbeat` | Orchestrator | A scheduled task is an entry point, and entry points live in Orchestrators. | Nothing in the solution |
 | `MultiCloud.Test.Unit` | Test | | Any |
 
-> **Open decision D1, for Matt, before the first build session.** The agreed shape was one Application, one Adapter
-> for the database, and one test project. This design adds `MultiCloud.Adapter.Platform` and
+> **Decision D1 (section 15): five projects.** The shape first agreed was one Application, one Adapter for the
+> database, and one test project. This design adds `MultiCloud.Adapter.Platform` and
 > `MultiCloud.Orchestrator.Heartbeat`, because the architecture skill puts a scheduled task in an Orchestrator and an
-> external system behind an Adapter. The alternative keeps both inside the Application as hosting concerns: two fewer
-> projects, and a recorded departure from the skill. This document is written for the five-project shape. If the
-> answer is the three-project shape, sections 5 and 6 move into `MultiCloud.Application.Web` under `Platform/` and
-> `Heartbeat/` folders and nothing else changes.
+> external system behind an Adapter. The alternative keeps both inside the Application as hosting concerns, under
+> `Platform/` and `Heartbeat/` folders: two fewer projects, and a recorded departure from the skill. It is revisited
+> if a cloud phase shows the split costs more than it gives.
 
 ### Precedent to read before writing code
 
@@ -132,9 +131,11 @@ shows:
   monitor such as Dynatrace calls. If it checked a dependency, one failing dependency would make every instance look
   dead at once. Say so in a comment on the action.
 - **`/healthz/ready`** answers whether this instance should receive traffic. In phase 1 it returns `ready` once the
-  host has finished starting and `not ready` with 503 once the host has begun stopping, so a platform stops sending
-  requests to an instance that is shutting down. The action carries a comment marking where dependency checks are
-  added later.
+  host has finished starting and `not ready` with 503 once the host has begun stopping. The 503 is expected to be
+  brief: soon after the stop signal the server stops accepting connections, and from then on a probe fails to
+  connect instead. Either answer takes the instance out of rotation. A platform that needs a longer drain gets it
+  from a platform setting, such as a pre-stop hook or a deregistration delay, decided in that platform's phase; never
+  from a delay in code (decision D5). The action carries a comment marking where dependency checks are added later.
 - **The two error routes exist to prove error handling and error logging end to end.** `Error500` throws an ordinary
   exception. `Error403` throws the application's own exception type that carries a status code (ASP.NET Core has no
   built-in one). Both are caught by one global exception handler (section 4.4).
@@ -166,19 +167,25 @@ shows:
 ## 5. Platform detection (`MultiCloud.Adapter.Platform`)
 
 One contract: read the platform description. The description holds the platform name, the cloud provider, the
-region, the name of the deployed service, its revision, and the name of this instance. A value the platform does not
-supply is absent, never guessed.
+cloud platform, the region, the name of the deployed service, its revision, and the name of this instance. A value
+the platform does not supply is absent, never guessed.
+
+The platform name is for people: the home page and the `X-Platform` header show it. The cloud provider and cloud
+platform are for log systems: they hold OpenTelemetry's well-known values for the `cloud.provider` and
+`cloud.platform` attributes (section 7), and are absent on a row that has no well-known value (decision D3). A
+cluster found through `KUBERNETES_SERVICE_HOST` may be anyone's Kubernetes, not only Google's, so that row sets
+neither; phase 4 decides whether Google Kubernetes Engine can be told apart without a network call.
 
 Detection reads environment variables only. No network call in phase 1. Environment variables are read through an
 injected abstraction so tests supply their own.
 
-| Checked in this order | Variable that identifies it | Platform name | Other values, where the platform supplies them |
-|---|---|---|---|
-| 1 | `K_SERVICE` | Google Cloud Run | Service `K_SERVICE`, revision `K_REVISION` |
-| 2 | `ECS_CONTAINER_METADATA_URI_V4` | AWS ECS | Region `AWS_REGION` |
-| 3 | `KUBERNETES_SERVICE_HOST` | Kubernetes | Instance `HOSTNAME` (the pod name) |
-| 4 | `DOTNET_RUNNING_IN_CONTAINER` | Container, platform not identified | Instance `HOSTNAME` |
-| 5 | none of the above | Local process | Instance: the machine name |
+| Checked in this order | Variable that identifies it | Platform name | Cloud provider / cloud platform | Other values, where the platform supplies them |
+|---|---|---|---|---|
+| 1 | `K_SERVICE` | Google Cloud Run | `gcp` / `gcp_cloud_run` | Service `K_SERVICE`, revision `K_REVISION` |
+| 2 | `ECS_CONTAINER_METADATA_URI_V4` | AWS ECS | `aws` / `aws_ecs` | Region `AWS_REGION` |
+| 3 | `KUBERNETES_SERVICE_HOST` | Kubernetes | absent | Instance `HOSTNAME` (the pod name) |
+| 4 | `DOTNET_RUNNING_IN_CONTAINER` | Container, platform not identified | absent | Instance `HOSTNAME` |
+| 5 | none of the above | Local process | absent | Instance: the machine name |
 
 **These variable names are from memory and are not verified.** Phase 1 can only prove rows 4 and 5. Each cloud phase
 checks its own row against what the platform actually sets and corrects this table and the code together.
@@ -209,8 +216,12 @@ operating system description. The session, version, environment and platform val
 - **The heartbeat never writes environment variables or configuration values wholesale.** They can hold secrets.
 - **Testability.** The timing uses the injected `TimeProvider`, so a test advances a fake clock. The code that
   composes and writes one heartbeat is separate from the loop that decides when.
-- The host constructs the options object, including the session, and passes it to the registration. The project does
-  not read configuration itself.
+- The host constructs the options object, including the time the session started, and passes it to the
+  registration. The project does not read configuration itself.
+- **The project references nothing else in the solution** (decision D2). It needs the session's start time for the
+  seconds-since-start value and nothing more: the session identifier and the platform reach every log line through
+  the enricher (section 7). The session type belongs to `MultiCloud.Application.Web`, and only its start time
+  crosses into this project.
 
 ## 7. Logging and the session
 
@@ -224,24 +235,31 @@ operating system description. The session, version, environment and platform val
 - **A bootstrap logger** exists before the host is built, so a failure during startup is logged. The log is flushed
   in a `finally` block as the process exits.
 - **The session.** `Program.cs` creates one session when the process starts: a version 7 UUID and the start time.
-  A session is one run of one instance of the application. It is not a user's session.
+  A session is one run of one instance of the application. It is not a user's session. The session type lives in
+  `MultiCloud.Application.Web`; the heartbeat receives only its start time (section 6).
 - **Every log line is enriched** with the properties below. The names are OpenTelemetry's semantic convention names,
   so a log system that knows those conventions recognizes them.
 
 | Property | Value |
 |---|---|
 | `service.name` | `multi-cloud-dotnet-container` |
-| `service.version` | The application's informational version |
+| `service.version` | The application's informational version, the same under `dotnet run` and in the image |
 | `service.instance.id` | The session identifier |
 | `deployment.environment.name` | The host environment name |
-| `cloud.provider` | From platform detection, when known |
-| `cloud.platform` | From platform detection, when known |
+| `cloud.provider` | OpenTelemetry's well-known value from platform detection (section 5), when known |
+| `cloud.platform` | OpenTelemetry's well-known value from platform detection (section 5), when known |
 | `cloud.region` | From platform detection, when known |
 | `host.name` | The machine name, which in a container is the container's host name |
 
 These are set by an enricher, not through message templates, because a message template property name cannot
 contain a dot. Confirm the names against the published conventions when writing the enricher, and record any that
 differ.
+
+- **`service.version` is the same in every build** (decision D4). The .NET SDK appends the source control commit to
+  the informational version by default. The image is built without `.git` in its context, so it would report a
+  different version from `dotnet run` on the same tree. `MultiCloud.Application.Web` turns that suffix off, so the
+  version is the one its project file sets. Recording the commit in the version belongs to a pipeline, and there is
+  none.
 
 ## 8. The Notes database (`MultiCloud.Adapter.Notes`)
 
@@ -293,7 +311,8 @@ No setting is a secret, and no secret is needed in phase 1.
 
 MSTest, written as the `code-csharp-mstest` skill describes. Unit tests only in phase 1.
 
-- Platform detection: one test per row of the table in section 5, the order of the checks, and absent values.
+- Platform detection: one test per row of the table in section 5, including its cloud provider and cloud platform
+  values, the order of the checks, and absent values.
 - Heartbeat: the three kinds, the sequence, the first line without waiting, the interval under a fake clock, and
   the rejected setting.
 - Notes: each operation, the validation rules, and the not-found answers.
@@ -342,9 +361,28 @@ Written from memory or from design, and to be confirmed by the session that buil
 
 - The platform environment variable names in section 5.
 - That Serilog accepts dotted property names from an enricher and writes them as plain JSON keys.
-- The OpenTelemetry semantic convention names in section 7.
+- The OpenTelemetry semantic convention names in section 7, and the well-known `cloud.provider` and
+  `cloud.platform` values in section 5.
 - The name of the environment variable that switches forwarded headers on, and that it trusts the proxy in front of
   the container on each target platform.
 - That the SQLite native library loads in the ASP.NET Core 10 runtime image as the non-root user.
+- That the .NET SDK appends the commit to the informational version by default, which property turns that off, and
+  that a build with no `.git` in its context raises no warning, since warnings are errors (section 7).
+- How long the server keeps accepting connections after the stop signal, which bounds how long `/healthz/ready` can
+  answer 503 (section 4.3).
 
 Anything in this list that turns out different is corrected here in the same change that discovers it.
+
+## 15. Decisions
+
+Decided by Matt on 2026-11-10, taking the recommendations from the first review of this design. Each one is
+provisional: the cloud phases deploy the image for real, and a decision that does not survive that is changed here in
+the same change that finds it.
+
+| # | Decision | Applied in |
+|---|---|---|
+| D1 | Five projects, not three: the platform Adapter and the heartbeat Orchestrator are their own projects | Section 3 |
+| D2 | The session type lives in the Application. The heartbeat receives only the session's start time and references no other project in the solution | Sections 3, 6, 7 |
+| D3 | `cloud.provider` and `cloud.platform` hold OpenTelemetry's well-known values, or are absent. The platform name for people appears on the home page and in `X-Platform` | Sections 5, 7 |
+| D4 | `service.version` carries no commit suffix, so `dotnet run` and the image report the same version | Section 7 |
+| D5 | `/healthz/ready` answers 503 once stopping begins, and no delay is added in code; a longer drain is a platform setting, decided per platform | Section 4.3 |
