@@ -1,8 +1,9 @@
 # Solution Design: Multi-Cloud DotNet Container
 
 Status: phase 1 (runs locally and in a local container) is built. Written 2026-11-10; its open questions were decided
-the same day (section 15). The solution builds and its unit tests pass; section 14 says what the first build
-confirmed and what still waits on the container.
+the same day (section 15). The solution builds, its unit tests pass, and the image passes the acceptance checks in
+section 13 except for two startup warnings in check 8, which open decision D6 (section 4.4) settles. Section 14 says
+what the first build confirmed.
 
 ## 1. Purpose
 
@@ -168,6 +169,15 @@ shows:
   a stop signal and then kill the process after a grace period; the shortest of the three is about 10 seconds.
 - **Nothing that needs shared state between instances:** no cookies, no anti-forgery tokens, no session state, no
   data protection keys.
+
+> **Open decision D6, for Matt, found by the first container run.** MVC's views register ASP.NET Core data
+> protection, and the host creates a key when it starts even though nothing in the application uses one. In the
+> container the key is written to `/home/app/.aspnet/DataProtection-Keys`, and two warnings are logged at startup:
+> the directory may not be persisted, and no XML encryptor is configured. They break acceptance check 8, which allows
+> no warning line. Under `dotnet run` on Windows the key goes to the user profile, protected, with no warning. The
+> choice is to quiet the `Microsoft.AspNetCore.DataProtection` log category below Error in `appsettings.json`
+> (configuration only; the unused key is still written), or to keep keys in memory with a small key repository in the
+> Application (code; nothing is written to disk, which also suits a read-only root file system in a later phase).
 
 ## 5. Platform detection (`MultiCloud.Adapter.Platform`)
 
@@ -380,18 +390,23 @@ turns out different is corrected here in the same change that discovers it.
 - **The SDK appends the commit to the informational version by default** (an assembly built from this tree without
   the setting reports `1.0.0+61cc46e…`), and `IncludeSourceRevisionInInformationalVersion` set to `false` turns it off
   (`MultiCloud.Application.Web` reports `0.1.0`).
-- **Row 5 of the platform table**: under `dotnet run` the platform is "Local process", named by the machine.
+- **Rows 4 and 5 of the platform table**: under `dotnet run` the platform is "Local process", named by the machine;
+  in a local container it is "Container, platform not identified", named by the container's host name.
+- **A build with no `.git` in its context raises no warning**: the image builds with warnings as errors and prints
+  none.
+- **`ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` switches forwarded headers on.** In the container, a request from
+  Docker's gateway with `X-Forwarded-Proto: https` and `X-Forwarded-For: 203.0.113.7` is seen as https from
+  203.0.113.7, so it is not limited to a proxy on the loopback address.
+- **The SQLite native library loads in the ASP.NET Core 10.0.14 runtime image as the non-root user** (uid 1654): the
+  Notes database is created and every verb answers.
+- **The 503 window on shutdown is too short to see.** Probing `/healthz/ready` about every 0.2 seconds through Docker's
+  port forward, the answers went from 200 straight to refused connections; `docker stop` took 1.3 seconds and the
+  `Stopping` heartbeat was written. A platform's probe sees the instance go away either way (decision D5).
 
 **Still to confirm:**
 
-- The platform environment variable names in section 5. Row 4 needs the container (acceptance check 11); rows 1 to 3
-  need their cloud phases.
-- That a build with no `.git` in its context raises no warning, since warnings are errors (section 7).
-- The name of the environment variable that switches forwarded headers on, and that it trusts the proxy in front of
-  the container on each target platform.
-- That the SQLite native library loads in the ASP.NET Core 10 runtime image as the non-root user.
-- How long the server keeps accepting connections after the stop signal, which bounds how long `/healthz/ready` can
-  answer 503 (section 4.3).
+- Rows 1 to 3 of the platform table, each in its cloud phase.
+- That forwarded headers are trusted from the proxy in front of the container on each target platform, in its phase.
 
 ## 15. Decisions
 
