@@ -464,7 +464,10 @@ turns out different is corrected here in the same change that discovers it.
   to Artifact Registry with its digest unchanged. Applying `deploy/gke/` changed only the deployment; the rollout
   replaced the pod in about 20 seconds, and the new pod ran the copied digest. Through the load balancer, the new pod
   answered the first request, reporting "Kubernetes" and the runner's own public address as the caller's. The
-  project's ID and the load balancer's address showed masked throughout the log.
+  project's ID and the load balancer's address showed masked throughout the log. Checked from Cloud Shell afterward:
+  Artifact Registry held the tag with the publish run's digest; the deployment named the image by that digest and
+  set `ForwardedHeaders__ForwardLimit` to 2; one pod ran it; the root route reported Cloud Shell's address as the
+  caller's; and the pod the rollout replaced wrote `Stopping` as the rollout finished.
 
 **Confirmed on Google Kubernetes Engine, deployed by hand, 2026-11-11** (section 17):
 
