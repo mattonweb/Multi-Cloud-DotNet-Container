@@ -31,7 +31,7 @@ defect in the design, and is raised before it is made.
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
 | 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | Done: deployed by hand and by its workflow, and confirmed, on 2026-11-11 (section 14); not designed here |
 | 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Done: deployed by hand and by its workflow, and confirmed, on 2026-11-11 (sections 14, 17) |
-| 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Next; not designed here yet |
+| 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | In progress: designed in section 18 on 2026-11-11; not deployed yet |
 
 Each later phase adds an install file and whatever platform settings it needs. Each install file is written as
 plain command-line steps a person can follow by hand, and ends with a section recording what was different on that
@@ -493,15 +493,31 @@ turns out different is corrected here in the same change that discovers it.
 
 **Still to confirm:**
 
-- Row 2 of the platform table, in phase 4.
-- That forwarded headers are trusted from the proxy in front of the container on ECS, in phase 4.
+- Row 2 of the platform table, in phase 4. AWS documents that ECS sets `ECS_CONTAINER_METADATA_URI_V4` on Fargate
+  platform 1.4.0 and later, and `AWS_REGION` for every task; neither has been seen in a running task yet.
+- That forwarded headers are trusted behind the Application Load Balancer with the default limit of 1. AWS documents
+  that the load balancer appends the caller's address to `X-Forwarded-For` by default
+  (`routing.http.xff_header_processing.mode` is `append`), which is one entry.
+- That a task ECS replaces writes its `Stopping` heartbeat: ECS waits for the load balancer to drain the task, then
+  sends the stop signal and waits 30 seconds (section 18).
+- What CloudWatch Logs makes of decision D8's `severity` and `message`. CloudWatch has no severity of its own; the
+  JSON line is expected to arrive whole and be searchable by its fields.
+- That AWS CloudShell can copy an image by digest: it has Docker, but whether it has the buildx plugin that
+  `docker buildx imagetools create` needs is not documented. The install file adds a pinned one if not.
+- That a new AWS account creates ECS's service-linked role on its own. Reports say the first cluster in an account
+  can fail without it, so the install file creates it first.
+- That the account, made with AWS's "new AWS experience", has a default VPC in `us-east-2`. AWS documents
+  "preconfigured defaults" but does not list them.
+- How Deploy to AWS ECS signs in. The new experience's managed policies deny `iam:*Provider*` on both its Free and
+  Paid plans, which blocks the OpenID Connect provider that keyless sign-in with GitHub's token needs (section 18).
 
 ## 15. Decisions
 
 Decided by Matt: on 2026-11-10, D1 to D5 taking the recommendations from the first review of this design, and D6 and
 D7 after the first container run; on 2026-11-11, D8 after the first Cloud Run deploy, D9 when the first workflows
-were written, D10 for phase 3, and D11 after the first GKE deploy. Each one is provisional: the cloud phases deploy
-the image for real, and a decision that does not survive that is changed here in the same change that finds it.
+were written, D10 for phase 3, D11 after the first GKE deploy, and D12 for phase 4. Each one is provisional: the
+cloud phases deploy the image for real, and a decision that does not survive that is changed here in the same change
+that finds it.
 
 | # | Decision | Applied in |
 |---|---|---|
@@ -516,6 +532,7 @@ the image for real, and a decision that does not survive that is changed here in
 | D9 | GitHub Actions, started only by hand: one workflow publishes the image once to GitHub Container Registry; one workflow per cloud copies it, digest unchanged, into that cloud's registry and deploys it. Each cloud's workflow follows its manual steps | Sections 2, 16 |
 | D10 | Phase 3 runs on a GKE Autopilot cluster, behind Google's HTTP load balancer from an Ingress, from plain manifests in `deploy/gke/`. GKE comes before AWS: Google Cloud is finished first | Sections 2, 17 |
 | D11 | How many entries of `X-Forwarded-For` to trust is the setting `ForwardedHeaders:ForwardLimit`, default 1, read by `Program.cs` like every other setting; GKE's deployment sets 2. A setting, not detection: the entries left of the platform's own are whatever the caller sent, so counting them cannot tell a proxy from a forgery. Decided after the first GKE deploy | Sections 4.4, 9, 17 |
+| D12 | Phase 4 runs on ECS on Fargate in `us-east-2`, one task behind an Application Load Balancer, in the default VPC's public subnets, from a task definition in `deploy/aws-ecs/`. The image is copied by digest into ECR; the manual steps run in AWS CloudShell. The deploy workflow was to sign in with GitHub's own token, trusted by an IAM role; the account's "new AWS experience" denies the identity provider that needs, so its sign-in is decided when it is written | Sections 2, 18 |
 
 ## 16. Workflows
 
@@ -528,7 +545,7 @@ deploy workflow once its manual steps have been run and pass.
 | Publish image | `.github/workflows/publish-image.yml` | Builds and unit-tests the solution through Signalbox's reusable pull request checks, pinned to a version tag; builds the image once for `linux/amd64`; pushes it to GitHub Container Registry as `ghcr.io/<owner>/multi-cloud-dotnet-container:<tag>`. Needs no cloud credential |
 | Deploy to Google Cloud Run | `.github/workflows/deploy-gcp-cloud-run.yml` | Takes a published tag, or, left blank, the newest tag on `ghcr.io`; signs in to Google through Workload Identity Federation; copies the image into Artifact Registry and checks the digest is unchanged; deploys that digest to the existing service; checks the new revision answers |
 | Deploy to Google Kubernetes Engine | `.github/workflows/deploy-gcp-gke.yml` | The same first three steps, with the same service account; then applies `deploy/gke/` with the image's digest, waits for the rollout, checks every new pod runs that digest, and checks through the load balancer that a new pod answers `up`, reports "Kubernetes", and reports the caller's address rather than the load balancer's. The cluster must already exist |
-| Deploy to AWS ECS | to come, in phase 4 | The same shape: sign in to the cloud without a stored key, copy by digest, deploy, check |
+| Deploy to AWS ECS | to come, once phase 4's manual steps pass | The same shape: sign in to AWS without a stored key if the account allows it (section 18); copy into ECR by digest; register the task definition with that digest and update the service; check through the load balancer |
 
 - **The image is built once.** Every cloud runs the same digest: the publish run's digest is the digest each deploy
   copies, checks and deploys. That is the design's one rule, shown rather than assumed.
@@ -569,3 +586,50 @@ steps pass (section 16). Decided by Matt on 2026-11-11 (decision D10).
   a pod's environment says the cluster is Google's, and the design makes no network call, so GKE reports itself as
   any Kubernetes. Whether to change that, for example with a variable the deployment sets, is open until the first
   deploy shows what the environment holds.
+
+## 18. Phase 4: AWS ECS on Fargate
+
+The same image on Amazon ECS, deployed by hand first from `docs/INSTALL-aws-ecs.md`, then by a deploy workflow once
+those steps pass (section 16). Each choice keeps AWS comparable with the two Google platforms. Decided by Matt on
+2026-11-11, taking the recommendations (decision D12).
+
+- **ECS on Fargate**, in `us-east-2` (Ohio), the AWS region nearest Chicago. AWS runs the servers, as Autopilot does
+  on GKE. One task at Fargate's smallest size, 0.25 vCPU and 512 MiB, which is what is
+  billed. ECS on EC2, with servers to size and patch, was the alternative.
+- **An Application Load Balancer in front**, plain HTTP on port 80, forwarding to the task's port 8080, so a proxy
+  sits in front of the container as on Cloud Run and GKE, and forwarded headers and Problem Details are tested a third
+  time. The load balancer appends one entry to `X-Forwarded-For`, so the default `ForwardedHeaders:ForwardLimit` of 1
+  applies with no setting: decision D11 seen from the other side. A public address on the task, with nothing in
+  front, was the alternative. HTTPS needs a domain and a certificate, as on GKE.
+- **The default VPC's public subnets**, two of them, because a load balancer needs two Availability Zones. The task
+  gets a public address so it can pull its image and send its logs without a NAT gateway; its security group admits
+  only the load balancer, on port 8080. Private subnets with a NAT gateway, about $1 more a day, were the alternative.
+- **ECR holds the image**, copied from `ghcr.io` with `docker buildx imagetools create`, digest unchanged, as Artifact
+  Registry does. The package on `ghcr.io` is public, so the copy needs no GitHub sign-in.
+- **The task definition is YAML in `deploy/aws-ecs/`**, registered with `--cli-input-yaml` so it can carry comments
+  like the GKE manifests. Its image and its execution role are `${IMAGE}` and `${EXECUTION_ROLE_ARN}`, filled in by
+  `envsubst`, because both hold the account's ID, which stays out of this repository. The execution role lets ECS
+  pull the image and write the logs; the application calls no AWS API, so the task has no role of its own.
+- **Health and stopping are platform settings.** The load balancer checks `/healthz/ready` every 10 seconds and needs
+  two passes, where AWS's defaults are 30 seconds and five. It drains a task for 30 seconds, where AWS's default is
+  300, before ECS sends the stop signal; ECS then waits 30 seconds, longer than the host's 8-second shutdown. There is
+  no container health check, because the image has no `curl` to run one with: the load balancer's check decides, and
+  ECS replaces a task it finds unhealthy. A new task starts before the old one stops, and ECS's deployment circuit
+  breaker rolls back a deployment whose task never becomes healthy.
+- **Settings are environment variables in the task definition**, as on the other platforms: `Heartbeat__WaitInSeconds`
+  is 60, and nothing else is set.
+- **Logs go to CloudWatch Logs**, one group, `/ecs/multi-cloud`, kept for 7 days.
+- **The task runs as the image's non-root user with every Linux capability dropped**, as on GKE.
+- **The manual steps run in AWS CloudShell**, the console's own terminal, with plain AWS CLI commands, as Google Cloud
+  Shell ran Google's. Infrastructure as code, if it comes, comes later (section 2).
+- **The account is a "new AWS experience" account**, the kind AWS now offers first. A Builder ID signs in instead of
+  a root user, the region is fixed at `us-east-2` (chosen by AWS from the account's address, and the design's choice
+  anyway), and AWS-managed policies limit what the account may do. Every service these steps use is on its Free Tier
+  list: ECS, ECR, Elastic Load Balancing, VPC, IAM, CloudWatch Logs and CloudShell.
+- **The deploy workflow's sign-in is open.** The plan was the Google one: an IAM role trusting GitHub's own token for
+  this repository's `main` branch, with the account's ID a repository secret. That needs an OpenID Connect identity
+  provider in IAM, and the new experience's policies deny `iam:*Provider*` on both its Free and Paid plans; AWS's
+  "activate advanced features" appears to lift it. A stored access key would work but breaks the rule that no cloud
+  key is stored anywhere (section 16). Matt decides when the workflow is written, after the manual steps pass.
+- **Row 2 of the platform table** applies: "AWS ECS", `aws`, `aws_ecs`, and the region from `AWS_REGION`, with no
+  service, revision or instance. Which variables Fargate really sets is confirmed on the first deploy (section 14).

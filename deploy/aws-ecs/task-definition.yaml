@@ -1,0 +1,47 @@
+# The application on AWS ECS on Fargate: one task running the published image, unchanged (docs/SDD.md section 18).
+#
+# ${IMAGE} and ${EXECUTION_ROLE_ARN} are filled in when the file is registered, with envsubst, because both hold the
+# AWS account's ID, which stays out of this repository. Everything that differs from the other platforms is a setting
+# here, never code. docs/INSTALL-aws-ecs.md registers it with aws ecs register-task-definition --cli-input-yaml.
+family: multi-cloud
+networkMode: awsvpc
+requiresCompatibilities:
+  - FARGATE
+# Fargate's smallest size, 0.25 vCPU and 512 MiB; Fargate bills for what the task asks for.
+cpu: "256"
+memory: "512"
+# The image is built for linux/amd64 only.
+runtimePlatform:
+  operatingSystemFamily: LINUX
+  cpuArchitecture: X86_64
+# The role ECS itself acts as to pull the image from ECR and write the logs. The application calls no AWS API, so the
+# task has no role of its own.
+executionRoleArn: ${EXECUTION_ROLE_ARN}
+containerDefinitions:
+  - name: web
+    image: ${IMAGE}
+    essential: true
+    portMappings:
+      - containerPort: 8080
+        protocol: tcp
+    # No ForwardedHeaders__ForwardLimit: the load balancer appends one entry to X-Forwarded-For, the caller's address,
+    # so the default of 1 applies (docs/SDD.md, decision D11).
+    environment:
+      - name: Heartbeat__WaitInSeconds
+        value: "60"
+    # Longer than the host's own 8-second shutdown timeout, so the Stopping heartbeat is written before ECS gives up
+    # waiting and kills the container.
+    stopTimeout: 30
+    # The image's non-root user, with every Linux capability dropped, as on GKE. There is no container health check:
+    # the image has no curl to run one with, so the load balancer's check on /healthz/ready decides, and ECS replaces
+    # a task the load balancer finds unhealthy.
+    linuxParameters:
+      capabilities:
+        drop:
+          - ALL
+    logConfiguration:
+      logDriver: awslogs
+      options:
+        awslogs-group: /ecs/multi-cloud
+        awslogs-region: us-east-2
+        awslogs-stream-prefix: web

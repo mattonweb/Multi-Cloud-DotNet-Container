@@ -17,14 +17,14 @@ correctly before a real application goes there:
 ## Status
 
 **Phases 1 to 3 of 4 are done.** The one image runs locally, on Google Cloud Run and on Google Kubernetes Engine,
-deployed by hand and with GitHub Actions. AWS ECS on Fargate is next.
+deployed by hand and with GitHub Actions. AWS ECS on Fargate is designed, and its manual steps are written.
 
 | Phase | What | State |
 |---|---|---|
 | 1 | The application, the `Dockerfile`, and running it locally | Done; [docs/INSTALL-local.md](docs/INSTALL-local.md) |
 | 2 | Google Cloud Run | Done: deployed by hand and with GitHub Actions; [docs/INSTALL-gcp-cloud-run.md](docs/INSTALL-gcp-cloud-run.md) |
 | 3 | Google Kubernetes Engine | Done: deployed by hand and with GitHub Actions; [docs/INSTALL-gcp-gke.md](docs/INSTALL-gcp-gke.md) |
-| 4 | AWS ECS on Fargate | Next |
+| 4 | AWS ECS on Fargate | In progress: designed, not yet deployed; [docs/INSTALL-aws-ecs.md](docs/INSTALL-aws-ecs.md) |
 
 ## What is here
 
@@ -32,8 +32,10 @@ deployed by hand and with GitHub Actions. AWS ECS on Fargate is next.
 - `docs/INSTALL-local.md`: build, run and verify it with `dotnet` and with Docker.
 - `docs/INSTALL-gcp-cloud-run.md`: deploy it to Google Cloud Run, by hand or with GitHub Actions.
 - `docs/INSTALL-gcp-gke.md`: deploy it to Google Kubernetes Engine, by hand or with GitHub Actions.
+- `docs/INSTALL-aws-ecs.md`: deploy it to AWS ECS on Fargate, by hand.
 - `Dockerfile` and `.dockerignore`: the one image.
 - `deploy/gke/`: the Kubernetes manifests for Google Kubernetes Engine.
+- `deploy/aws-ecs/`: the ECS task definition for AWS ECS on Fargate.
 - `.github/workflows/`: **Publish image**, which builds the image once and publishes it to GitHub Container Registry,
   and one deploy workflow per cloud, so far **Deploy to Google Cloud Run** and **Deploy to Google Kubernetes
   Engine**. Each runs only when started by hand.
