@@ -16,14 +16,15 @@ correctly before a real application goes there:
 
 ## Status
 
-**Phase 1 of 4. The application and its image are built and run locally.**
+**Phases 1 to 3 of 4 are done.** The one image runs locally, on Google Cloud Run and on Google Kubernetes Engine,
+deployed by hand and with GitHub Actions. AWS ECS on Fargate is next.
 
 | Phase | What | State |
 |---|---|---|
-| 1 | The application, the `Dockerfile`, and running it locally | Built; [docs/INSTALL-local.md](docs/INSTALL-local.md) |
-| 2 | Google Cloud Run | In progress: deployed by hand and with GitHub Actions; [docs/INSTALL-gcp-cloud-run.md](docs/INSTALL-gcp-cloud-run.md) |
-| 3 | Google Kubernetes Engine | Next |
-| 4 | AWS ECS on Fargate | Not started |
+| 1 | The application, the `Dockerfile`, and running it locally | Done; [docs/INSTALL-local.md](docs/INSTALL-local.md) |
+| 2 | Google Cloud Run | Done: deployed by hand and with GitHub Actions; [docs/INSTALL-gcp-cloud-run.md](docs/INSTALL-gcp-cloud-run.md) |
+| 3 | Google Kubernetes Engine | Done: deployed by hand and with GitHub Actions; [docs/INSTALL-gcp-gke.md](docs/INSTALL-gcp-gke.md) |
+| 4 | AWS ECS on Fargate | Next |
 
 ## What is here
 

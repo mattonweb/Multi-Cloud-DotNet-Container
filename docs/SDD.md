@@ -29,9 +29,9 @@ defect in the design, and is raised before it is made.
 | Phase | Deliverable | State |
 |---|---|---|
 | 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
-| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | In progress: deployed by hand and by its workflow on 2026-11-11; not designed here |
-| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | In progress: deployed by hand and by its workflow on 2026-11-11 (section 17) |
-| 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Later; not designed here |
+| 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | Done: deployed by hand and by its workflow, and confirmed, on 2026-11-11 (section 14); not designed here |
+| 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Done: deployed by hand and by its workflow, and confirmed, on 2026-11-11 (sections 14, 17) |
+| 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | Next; not designed here yet |
 
 Each later phase adds an install file and whatever platform settings it needs. Each install file is written as
 plain command-line steps a person can follow by hand, and ends with a section recording what was different on that
@@ -468,6 +468,11 @@ turns out different is corrected here in the same change that discovers it.
   Artifact Registry held the tag with the publish run's digest; the deployment named the image by that digest and
   set `ForwardedHeaders__ForwardLimit` to 2; one pod ran it; the root route reported Cloud Shell's address as the
   caller's; and the pod the rollout replaced wrote `Stopping` as the rollout finished.
+- **The default of 1 leaves Cloud Run as it was.** Deploy to Google Cloud Run deployed `2026.1111.5` as a new revision.
+  The service sets no `ForwardedHeaders__ForwardLimit`, and the root route reported `https` and Cloud Shell's address
+  as the caller's: the same address GKE reported, with its limit of 2. Decision D11 holds on both platforms.
+- **Both Google platforms run one image.** Cloud Run's revision and GKE's pod both ran the publish run's digest,
+  `sha256:1632bb0b…`: the design's one rule, shown on two platforms at once.
 
 **Confirmed on Google Kubernetes Engine, deployed by hand, 2026-11-11** (section 17):
 
@@ -490,8 +495,6 @@ turns out different is corrected here in the same change that discovers it.
 
 - Row 2 of the platform table, in phase 4.
 - That forwarded headers are trusted from the proxy in front of the container on ECS, in phase 4.
-- That the default of 1 leaves Cloud Run reporting the caller's address, on the first Cloud Run deploy of an image
-  that reads `ForwardedHeaders:ForwardLimit` (`2026.1111.5` or later).
 
 ## 15. Decisions
 
