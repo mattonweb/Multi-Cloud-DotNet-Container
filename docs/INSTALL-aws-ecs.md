@@ -13,7 +13,9 @@ belong in this repository. The commands find it for themselves, so you never typ
   an AWS Builder ID instead of a root user; turn on multi-factor sign-in in **AWS Settings**. In **Billing and Cost
   Management**, **Budgets**, a monthly cost budget of, say, $10 with an email alert is a cheap guard rail. The steps
   use only services the new experience's Free Tier includes: ECS, ECR, Elastic Load Balancing, VPC, IAM, CloudWatch
-  Logs and CloudShell.
+  Logs and CloudShell. **A new account is verified first, which AWS says can take up to two days**; until then
+  CloudShell answers that it is unable to create the environment. Once the account is verified, delete that
+  environment (CloudShell's **Actions**, **Delete**) and open CloudShell again.
 - **The region `us-east-2` (US East, Ohio).** The new experience chooses a project's region from its address and does
   not change it; in the United States that is `us-east-2`, the design's choice. An account made the advanced way
   chooses it in the console's region menu at the top right.
