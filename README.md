@@ -11,7 +11,8 @@ correctly before a real application goes there:
   system and to tell one run of the application from the next.
 - **Two routes that fail on purpose**, to confirm that errors are handled and logged.
 - **A small in-memory API** that accepts every HTTP verb, to confirm a firewall lets them all through.
-- **A home page** that says where the application thinks it is running.
+- **A root route** that says, as JSON, where the application thinks it is running. The application is a JSON API and
+  returns no HTML page.
 
 ## Status
 
@@ -33,7 +34,7 @@ correctly before a real application goes there:
 
 | Project | What it holds |
 |---|---|
-| `MultiCloud.Application.Web` | The MVC host: settings, logging, the session, the controllers and the home page |
+| `MultiCloud.Application.Web` | The MVC host: settings, logging, the session and the controllers |
 | `MultiCloud.Adapter.Platform` | Works out which platform the application runs on, from environment variables |
 | `MultiCloud.Adapter.Notes` | The in-memory Notes database, and creating, reading, replacing, changing and deleting notes |
 | `MultiCloud.Orchestrator.Heartbeat` | The background heartbeat |
@@ -65,7 +66,7 @@ Every URL is lower case. `src/MultiCloud.Application.Web/MultiCloud.Application.
 
 | Verb | Route | Answer |
 |---|---|---|
-| GET | `/` | The home page: platform, session, version, environment, and the request as the application sees it |
+| GET | `/` | JSON: the platform, session, version, environment, the request as the application sees it, and the GET routes |
 | GET | `/healthz/ping` | 200 `up`, always; no dependencies |
 | GET | `/healthz/ready` | 200 `ready` once started; 503 `not ready` while starting or stopping |
 | GET | `/healthz/error/500` | 500 problem details, and an error log line with the exception |
@@ -99,7 +100,8 @@ Each has its default in `appsettings.json` and is overridden by an environment v
 ## Versions and choices
 
 - **.NET 10** and **C# 14**, built with the .NET SDK 10.0.402 on the development machine.
-- **ASP.NET Core MVC**, controllers with views.
+- **ASP.NET Core MVC**, controllers without views: every answer is JSON, an error as Problem Details (RFC 9457),
+  except the two probes' plain text.
 - **Serilog**, writing one JSON object per line to the console, with OpenTelemetry's names for the session and
   platform properties on every line.
 - **Entity Framework Core over SQLite, in memory.** Nothing is written to disk; a restart empties it.

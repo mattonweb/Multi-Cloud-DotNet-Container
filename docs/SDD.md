@@ -1,9 +1,8 @@
 # Solution Design: Multi-Cloud DotNet Container
 
 Status: phase 1 (runs locally and in a local container) is built. Written 2026-11-10; its open questions were decided
-the same day (section 15). The solution builds, its unit tests pass, and the image passes the acceptance checks in
-section 13 except for two startup warnings in check 8, which open decision D6 (section 4.4) settles. Section 14 says
-what the first build confirmed.
+the same day (section 15). The solution builds, its unit tests pass, and the image passes every acceptance check in
+section 13. Section 14 says what the first build confirmed.
 
 ## 1. Purpose
 
@@ -53,7 +52,7 @@ src/
   Multi-Cloud Container Solution.slnx      the one solution file
   Directory.Build.props                    house build settings (already in the repository)
   .editorconfig                            house C# style (already in the repository)
-  MultiCloud.Application.Web/              the MVC host: composition root, controllers, one view, logging setup
+  MultiCloud.Application.Web/              the MVC host: composition root, controllers, logging setup
   MultiCloud.Adapter.Platform/             detects the hosting platform and describes it
   MultiCloud.Adapter.Notes/                the in-memory Notes database and its create, read, update, delete
   MultiCloud.Orchestrator.Heartbeat/       the background heartbeat
@@ -66,7 +65,7 @@ commit.
 
 | Project | Kind | Why it is its own project | May reference |
 |---|---|---|---|
-| `MultiCloud.Application.Web` | Application | The host. Loads configuration, builds each options object, calls each registration, holds controllers and the view. No application logic. | The three below |
+| `MultiCloud.Application.Web` | Application | The host. Loads configuration, builds each options object, calls each registration, holds the controllers. No application logic. | The three below |
 | `MultiCloud.Adapter.Platform` | Adapter | The hosting platform is an external system. Each platform announces itself differently; this project translates all of them into one contract. | Nothing in the solution |
 | `MultiCloud.Adapter.Notes` | Adapter | Owns one data store, the in-memory `Notes` database. | Nothing in the solution |
 | `MultiCloud.Orchestrator.Heartbeat` | Orchestrator | A scheduled task is an entry point, and entry points live in Orchestrators. | Nothing in the solution |
@@ -93,13 +92,15 @@ existing solution of the same shape. Read these before creating the matching pie
 
 ## 4. The web application
 
-MVC controllers with views. No Razor Pages, no minimal-API endpoints. API controllers carry `[ApiController]`.
+MVC controllers without views: the application is a JSON API and returns no HTML page (decision D7). Every answer
+is JSON, an error as Problem Details, except the two probes' plain text. No views, no Razor Pages, no minimal-API
+endpoints. Every controller carries `[ApiController]`.
 
 ### 4.1 Routes
 
 | Verb | Route | Action | Answer |
 |---|---|---|---|
-| GET | `/` | `HomeController.Index` | HTML page, section 4.2 |
+| GET | `/` | `HomeController.Index` | 200, JSON, section 4.2 |
 | GET | `/healthz/ping` | `HealthController.Ping` | 200, `text/plain`, body `up` |
 | GET | `/healthz/ready` | `HealthController.Ready` | 200 `ready`, or 503 `not ready` |
 | GET | `/healthz/error/500` | `DiagnosticsController.Error500` | Throws. 500 problem details |
@@ -119,17 +120,17 @@ The probes and the error routes share the `/healthz` prefix but are two controll
 found two responsibilities in it, and the build failed: the probes depend on the host's state, the error routes on
 the `Diagnostics` setting. The routes are unchanged.
 
-### 4.2 The home page
+### 4.2 The root route
 
-One read-only view, plain HTML and one small stylesheet. No script, no form, nothing loaded from another site. It
-shows:
+One JSON document, `application/json`, that says where the application thinks it is running. It holds:
 
-- The platform, as section 5 describes it.
-- The session identifier and when the session started (section 7).
-- The application version and the environment name.
-- The request as the application sees it: scheme, host and remote address. Behind a platform's proxy these show
-  whether forwarded headers are being honored.
-- Links to every GET route above.
+- `service`, `version` and `environment`: the application's name, as `service.name` gives it, its version, and the
+  host environment's name.
+- `session`: the session identifier and when the session started (section 7).
+- `platform`: the platform as section 5 describes it. A value the platform does not supply is `null`.
+- `request`: the request as the application sees it, its scheme, host and remote address. Behind a platform's proxy
+  these show whether forwarded headers are being honored.
+- `routes`: every GET route above.
 
 ### 4.3 Health routes
 
@@ -173,14 +174,11 @@ shows:
 - **Nothing that needs shared state between instances:** no cookies, no anti-forgery tokens, no session state, no
   data protection keys.
 
-> **Open decision D6, for Matt, found by the first container run.** MVC's views register ASP.NET Core data
-> protection, and the host creates a key when it starts even though nothing in the application uses one. In the
-> container the key is written to `/home/app/.aspnet/DataProtection-Keys`, and two warnings are logged at startup:
-> the directory may not be persisted, and no XML encryptor is configured. They break acceptance check 8, which allows
-> no warning line. Under `dotnet run` on Windows the key goes to the user profile, protected, with no warning. The
-> choice is to quiet the `Microsoft.AspNetCore.DataProtection` log category below Error in `appsettings.json`
-> (configuration only; the unused key is still written), or to keep keys in memory with a small key repository in the
-> Application (code; nothing is written to disk, which also suits a read-only root file system in a later phase).
+> **No views, and so no data protection key (decisions D6 and D7, section 15).** The first container run found that
+> MVC's views register ASP.NET Core data protection, and that the host then created a key at startup that nothing
+> used: it was written to `/home/app/.aspnet/DataProtection-Keys`, with two warnings that broke acceptance check 8.
+> Quieting them in configuration (D6) was decided, then withdrawn the same day when the views went (D7): MVC without
+> views registers no anti-forgery and no data protection, and the container writes no key and logs no warning.
 
 ## 5. Platform detection (`MultiCloud.Adapter.Platform`)
 
@@ -188,7 +186,7 @@ One contract: read the platform description. The description holds the platform 
 cloud platform, the region, the name of the deployed service, its revision, and the name of this instance. A value
 the platform does not supply is absent, never guessed.
 
-The platform name is for people: the home page and the `X-Platform` header show it. The cloud provider and cloud
+The platform name is for people: the root route and the `X-Platform` header show it. The cloud provider and cloud
 platform are for log systems: they hold OpenTelemetry's well-known values for the `cloud.provider` and
 `cloud.platform` attributes (section 7), and are absent on a row that has no well-known value (decision D3). A
 cluster found through `KUBERNETES_SERVICE_HOST` may be anyone's Kubernetes, not only Google's, so that row sets
@@ -338,7 +336,7 @@ MSTest, written as the `code-csharp-mstest` skill describes. Unit tests only in 
   the rejected setting.
 - Notes: each operation, the validation rules, and the not-found answers.
 - Health controller: ping, and ready in each host state. Diagnostics controller: the error routes with the setting
-  on and off.
+  on and off. Home controller: the application, session, platform and request the root route reports.
 - Exception handler: the status-carrying exception and the ordinary one.
 
 `MultiCloud.Application.Web` also holds a `.http` file with one request for every route in section 4.1, so every
@@ -372,7 +370,7 @@ run. That is a build or setup failure to fix first, not a failed check.
 | 8 | Restart with `Diagnostics__ErrorRoutesEnabled=false` and GET both error routes | 404 for both, and no error or warning log line |
 | 9 | Send POST, GET, HEAD, PUT, PATCH, OPTIONS and DELETE to the notes routes, then GET the deleted note | 201, 200, 200, 200, 200, 204, 204, then 404 |
 | 10 | Read the request log after checks 3 to 9 | The notes and error requests are logged; no ping or ready request is |
-| 11 | Open `/` in the container, then under `dotnet run` | "Container, platform not identified" in the first; "Local process" in the second |
+| 11 | GET `/` in the container, then under `dotnet run` | JSON whose `platform.name` is "Container, platform not identified" in the first and "Local process" in the second |
 
 Check 4 is the one that matters most: it proves in one step that the session identifier, the enrichment, the
 heartbeat and the response header all come from the same run.
@@ -413,14 +411,16 @@ turns out different is corrected here in the same change that discovers it.
 
 ## 15. Decisions
 
-Decided by Matt on 2026-11-10, taking the recommendations from the first review of this design. Each one is
-provisional: the cloud phases deploy the image for real, and a decision that does not survive that is changed here in
+Decided by Matt on 2026-11-10: D1 to D5 taking the recommendations from the first review of this design, D6 and D7
+after the first container run. Each one is provisional: the cloud phases deploy the image for real, and a decision that does not survive that is changed here in
 the same change that finds it.
 
 | # | Decision | Applied in |
 |---|---|---|
 | D1 | Five projects, not three: the platform Adapter and the heartbeat Orchestrator are their own projects | Section 3 |
 | D2 | The session type lives in the Application. The heartbeat receives only the session's start time and references no other project in the solution | Sections 3, 6, 7 |
-| D3 | `cloud.provider` and `cloud.platform` hold OpenTelemetry's well-known values, or are absent. The platform name for people appears on the home page and in `X-Platform` | Sections 5, 7 |
+| D3 | `cloud.provider` and `cloud.platform` hold OpenTelemetry's well-known values, or are absent. The platform name for people appears in the root route's JSON and in `X-Platform` | Sections 5, 7 |
 | D4 | `service.version` carries no commit suffix, so `dotnet run` and the image report the same version | Section 7 |
 | D5 | `/healthz/ready` answers 503 once stopping begins, and no delay is added in code; a longer drain is a platform setting, decided per platform | Section 4.3 |
+| D6 | Withdrawn by D7. The data protection log category was to be set to `Error` in `appsettings.json`, to quiet the two startup warnings of a key nothing used; without views no key is created | Section 4.4 |
+| D7 | No views: the application is a JSON API and returns no HTML page. `GET /` answers JSON; MVC is registered without views, which also removes data protection | Sections 4, 4.2, 4.4 |

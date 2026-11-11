@@ -209,14 +209,20 @@ BASE=http://localhost:8080
     docker logs multi-cloud | grep '"@m":"HTTP '
     ```
 
-11. **Where it thinks it is running.** Open <http://localhost:8080/> in a browser: the platform is "Container,
-    platform not identified". Under `dotnet run`, <http://localhost:5080/> says "Local process".
-
-12. **Forwarded headers.** Send the headers a platform's proxy would add. Expect the home page to show the scheme
-    `https` and the remote address `203.0.113.7`.
+11. **Where it thinks it is running.** The root route answers JSON, never HTML. Expect `platform.name` to be
+    "Container, platform not identified", and `cloudProvider`, `cloudPlatform`, `region`, `service` and `revision`
+    to be `null`, since a local container supplies none of them. Under `dotnet run`, `$BASE/` on port 5080 says
+    "Local process".
 
     ```bash
-    curl -s -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 203.0.113.7' $BASE/ | grep -A1 -E '<dt>(Scheme|Remote address)</dt>'
+    curl -s $BASE/
+    ```
+
+12. **Forwarded headers.** Send the headers a platform's proxy would add. Expect the `request` in the root route's
+    JSON to show the scheme `https` and the remote address `203.0.113.7`.
+
+    ```bash
+    curl -s -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 203.0.113.7' $BASE/ | grep -o '"request":{[^}]*}'
     ```
 
 The notes live inside one process. With two instances behind a load balancer, a note created on one is absent on

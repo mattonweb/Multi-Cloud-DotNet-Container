@@ -1,18 +1,19 @@
 namespace MultiCloud.Application.Web.Controllers;
 
 using System;
-using System.Net;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 using MultiCloud.Adapter.Platform.Contracts;
+using MultiCloud.Application.Web.Mapping;
 using MultiCloud.Application.Web.Models;
 
 /// <summary>
-/// The home page, which says where the application thinks it is running.
+/// The root route, which says, as JSON, where the application thinks it is running. The application returns no HTML
+/// page.
 /// </summary>
+[ApiController]
 [Route("")]
-public sealed class HomeController : Controller
+public sealed class HomeController : ControllerBase
 {
     private readonly ApplicationSession _session;
     private readonly ApplicationIdentity _identity;
@@ -43,25 +44,19 @@ public sealed class HomeController : Controller
     }
 
     /// <summary>
-    /// Shows the platform, the session, the version and environment, and the request as the application sees it.
+    /// Reports the application, this run, the platform, the request as the application sees it, and the GET routes to
+    /// try.
     /// </summary>
-    /// <returns>The home page.</returns>
+    /// <returns>200 with the report as JSON.</returns>
     [HttpGet]
-    public ViewResult Index()
+    public ActionResult<HomeResource> Index()
     {
-        HttpRequest request = this.Request;
-        ConnectionInfo connection = this.HttpContext.Connection;
-        IPAddress? remoteAddress = connection.RemoteIpAddress;
-        HomePage page = new HomePage
-        {
-            Session = this._session,
-            Version = this._identity.Version,
-            EnvironmentName = this._environment.EnvironmentName,
-            Platform = this._platform,
-            RequestScheme = request.Scheme,
-            RequestHost = request.Host.ToString(),
-            RemoteAddress = remoteAddress?.ToString(),
-        };
-        return this.View(page);
+        HomeResource home = HomeResourceMapper.ToResource(
+            this._session,
+            this._identity,
+            this._platform,
+            this._environment.EnvironmentName,
+            this.HttpContext);
+        return this.Ok(home);
     }
 }

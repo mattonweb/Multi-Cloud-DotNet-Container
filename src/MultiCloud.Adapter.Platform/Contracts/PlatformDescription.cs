@@ -7,7 +7,7 @@ namespace MultiCloud.Adapter.Platform.Contracts;
 public sealed record PlatformDescription
 {
     /// <summary>
-    /// Gets the platform's name for people, which the home page and the <c>X-Platform</c> header show.
+    /// Gets the platform's name for people, which the root route and the <c>X-Platform</c> header show.
     /// </summary>
     required public PlatformName Name { get; init; }
 

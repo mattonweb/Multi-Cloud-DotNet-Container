@@ -5,7 +5,7 @@ namespace MultiCloud.Adapter.Platform.Contracts;
 /// </summary>
 /// <remarks>
 /// This is the one place in the solution that knows how each platform announces itself. Nothing else in the code
-/// decides anything from the answer; it is only reported, on the home page, in a response header and on every log
+/// decides anything from the answer; it is only reported, by the root route, in a response header and on every log
 /// line.
 /// </remarks>
 public interface IPlatformDetector

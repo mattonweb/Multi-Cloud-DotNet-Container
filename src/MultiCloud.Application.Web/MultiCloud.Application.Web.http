@@ -3,7 +3,7 @@
 
 @host = http://localhost:5080
 
-### The home page: where the application thinks it is running
+### Where the application thinks it is running, as JSON
 GET {{host}}/
 
 ### Liveness: always 200 and the text "up"

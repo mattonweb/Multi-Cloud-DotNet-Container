@@ -160,14 +160,18 @@ public static class Program
     }
 
     /// <summary>
-    /// Registers MVC, with lower-case URLs, the notes API's JSON converters, problem details that carry the session,
-    /// and the one global exception handler.
+    /// Registers MVC controllers without views, with lower-case URLs, the notes API's JSON converters, problem details
+    /// that carry the session, and the one global exception handler.
     /// </summary>
     /// <param name="services">The application's service collection.</param>
     /// <param name="session">This run of the application.</param>
+    /// <remarks>
+    /// The application is a JSON API and returns no HTML page (docs/SDD.md, decision D7). Without views, MVC registers
+    /// no anti-forgery and no data protection, so no key is created at startup.
+    /// </remarks>
     private static void AddWeb(IServiceCollection services, ApplicationSession session)
     {
-        IMvcBuilder mvc = services.AddControllersWithViews();
+        IMvcBuilder mvc = services.AddControllers();
         mvc.AddJsonOptions(ConfigureJson);
         services.AddRouting(static options => options.LowercaseUrls = true);
 
@@ -220,7 +224,6 @@ public static class Program
         application.UseMiddleware<ResponseHeadersMiddleware>();
         application.UseWhen(RequestLogFilter.IsLogged, UseRequestLogging);
         application.UseExceptionHandler();
-        application.MapStaticAssets();
         application.MapControllers();
     }
 
