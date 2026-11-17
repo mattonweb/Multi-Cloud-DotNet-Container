@@ -28,7 +28,7 @@ defect in the design, and is raised before it is made.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 1 | The solution, the Dockerfile, and `docs/INSTALL-local.md`. Runs with `dotnet run` and with `docker run`. | This document |
+| 1 | The solution, the Dockerfile, and `docs/INSTALL-local-docker.md`. Runs with `dotnet run` and with `docker run`. `docs/INSTALL-local-podman.md`, added 2026-11-16, builds and runs the same image with Podman; not run yet (section 14). | This document |
 | 2 | Google Cloud Run, with `docs/INSTALL-gcp-cloud-run.md` | Done: deployed by hand and by its workflow, and confirmed, on 2026-11-11 (section 14); not designed here |
 | 3 | Google Kubernetes Engine, with `docs/INSTALL-gcp-gke.md` | Done: deployed by hand and by its workflow, and confirmed, on 2026-11-11 (sections 14, 17) |
 | 4 | AWS ECS on Fargate, with `docs/INSTALL-aws-ecs.md` | In progress: designed in section 18 on 2026-11-11; not deployed yet |
@@ -48,7 +48,8 @@ Dockerfile                                 the one image definition
 .dockerignore
 docs/
   SDD.md                                   this document
-  INSTALL-local.md                         phase 1: run it with dotnet, run it with Docker
+  INSTALL-local-docker.md                  phase 1: run it with dotnet, run it with Docker
+  INSTALL-local-podman.md                  the same image with Podman, and what differs
 src/
   Multi-Cloud Container Solution.slnx      the one solution file
   Directory.Build.props                    house build settings (already in the repository)
@@ -365,11 +366,16 @@ verb can be sent from Visual Studio.
 
 ## 12. Documents the first session writes
 
-- `docs/INSTALL-local.md`, with these headings, which every later install file repeats: Prerequisites, One-time
-  setup, Build, Run, Verify, Tear down, What is different here. The Verify section gives a `curl` command for every
-  route and verb.
+- `docs/INSTALL-local-docker.md` (named `INSTALL-local.md` until 2026-11-16), with these headings, which every later
+  install file repeats: Prerequisites, One-time setup, Build, Run, Verify, Tear down, What is different here. The
+  Verify section gives a `curl` command for every route and verb.
 - `README.md`: replace the placeholder sections with the routes, the settings, and the exact version of every
   package and base image chosen.
+
+**Changed by Matt on 2026-11-16.** An install file now shows how to get the application running and stops there: the
+Verify and Tear down sections were removed from the local and Google Cloud files, and the files link to the workflows
+instead of repeating their steps. `README.md` is now an overview that links to other files and lists no versions. The
+versions are in the project files, `src/Directory.Build.props`, the `Dockerfile` and the workflows.
 
 ## 13. Acceptance for phase 1
 
@@ -493,6 +499,11 @@ turns out different is corrected here in the same change that discovers it.
 
 **Still to confirm:**
 
+- That Podman builds and runs the image with no change to the `Dockerfile`, the `.dockerignore` or the code
+  (`docs/INSTALL-local-podman.md`, written 2026-11-16 from Podman's documentation; Podman has not been run). In
+  particular: that `USER $APP_UID`, a variable the base image sets, resolves in Podman's builder as it does in
+  Docker's; that the container's user is still uid 1654; that the short image name runs although Podman stores it as
+  `localhost/…`; and which remote address the application sees, where Docker's is its network gateway.
 - Row 2 of the platform table, in phase 4. AWS documents that ECS sets `ECS_CONTAINER_METADATA_URI_V4` on Fargate
   platform 1.4.0 and later, and `AWS_REGION` for every task; neither has been seen in a running task yet.
 - That forwarded headers are trusted behind the Application Load Balancer with the default limit of 1. AWS documents

@@ -19,6 +19,16 @@
   section 17, decision D10). The layout below adds `deploy/gke/`, and the scope list adds `deploy`.
 - **2026-11-11 (attended session with Matt): phase 4 is AWS ECS on Fargate behind a load balancer** (`docs/SDD.md`
   section 18, decision D12). The layout below adds `deploy/aws-ecs/`, which the `deploy` scope covers.
+- **2026-11-16 (attended session with Matt): `docs/INSTALL-local.md` is now `docs/INSTALL-local-docker.md`**, and
+  `docs/INSTALL-local-podman.md` is new: the same image with Podman, written from Podman's documentation and not run
+  yet (`docs/SDD.md` section 14). Docker stays the tool the image is built with; the layout below names both files.
+- **2026-11-16 (attended session with Matt): what the documents are for, ruled by Matt.** An install file shows an
+  intern-level developer how to get the application running, and nothing more: no Verify section, no Tear down
+  section, and no log of what our own runs showed. It links to the workflow files in `.github/workflows/` instead of
+  repeating their steps. `README.md` is a marketing page that is precise and links out to other files; it holds no
+  version table. Write every document at an 8th-grade reading level, in precise words, with each paragraph on one
+  line (no line breaks inside a paragraph). Do not add those sections back. `docs/INSTALL-aws-ecs.md` has not been
+  rewritten this way yet.
 
 Orientation for Claude Code sessions in this repository. It is **public** and exists for one purpose: one small
 ASP.NET Core MVC application, built into one container image, deployed unchanged to several clouds, with a
@@ -78,7 +88,8 @@ from it.
 - Entity Framework Core over an in-memory SQLite database, created and seeded when the application starts.
 - Tests: MSTest, written as the `code-csharp-mstest` skill describes.
 - Docker for the image. One `Dockerfile` at the repository root.
-- Every package and base image is pinned to one exact version, recorded in `README.md`.
+- Every package and base image is pinned to one exact version, in the project files, `src/Directory.Build.props`,
+  the `Dockerfile` and the workflows. `README.md` lists none of them.
 
 ## Layout
 
@@ -93,7 +104,8 @@ deploy/
   aws-ecs/                                 the ECS task definition; the image and the role are filled in when applied
 docs/
   SDD.md                                   the solution design
-  INSTALL-local.md                         run it with dotnet, run it with Docker
+  INSTALL-local-docker.md                  run it with dotnet, run it with Docker
+  INSTALL-local-podman.md                  the same image with Podman, and what differs; not run yet
   INSTALL-<cloud>.md                       one per cloud, added by later phases
 src/
   Multi-Cloud Container Solution.slnx      the one solution file
